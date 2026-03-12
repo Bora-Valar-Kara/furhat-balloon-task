@@ -1,8 +1,67 @@
 import { setup, createActor, fromPromise, assign } from "xstate";
 import * as readline from 'readline';
+// Imports for server and file system (required for audio importing)
+import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 
+import { networkInterfaces } from 'os';
+
+
+// Automatically find your computer's IP
+function findIPContaining(value) {
+  for (const [name, ifaceArray] of Object.entries(networkInterfaces())) {
+    if (!ifaceArray) continue;
+    for (const iface of ifaceArray) {
+      if (iface.address.indexOf(value) === 0) {
+        return iface.address;
+      }
+    }
+  }
+}
+
+const OVERRIDE_IP = ""; // If automatic detection doesn't work, set here. Run ifconfig | grep 192 in terminal to find it. Or ifconfig | grep 10
+
+const PC_IP = OVERRIDE_IP || findIPContaining("192") || findIPContaining("10."); // CHANGE THIS TO YOUR COMPUTER'S LOCAL IP ADDRESS (the one that Furhat can access through the network). Run ifconfig | grep 192 on terminal to find it. It usually starts with 192.168.1.xxx or 10.0.0.xxx
 const FURHATURI = "192.168.1.11:54321";
 const OLLAMA_API_URL = "http://localhost:11434/api/chat";
+const firstMessageWaitTimeMs = 6000; // 6 seconds for the first message
+
+// >>> HANDLING RECORDED AUDIO IMPORTS /BEGIN <<<
+const AUDIO_PORT = 8000;
+const AUDIO_DIR = path.join(__dirname, 'audio');
+
+http.createServer((req, res) => {
+  const filePath = path.join(AUDIO_DIR, req.url || '');
+  
+  if (fs.existsSync(filePath) && filePath.endsWith('.wav')) {
+    res.writeHead(200, { 'Content-Type': 'audio/wav' });
+    fs.createReadStream(filePath).pipe(res);
+  } else {
+    res.writeHead(404);
+    res.end('File not found');
+  }
+}).listen(AUDIO_PORT, () => {
+  console.log(`Audio server running at http://${PC_IP}:${AUDIO_PORT}`);
+});
+
+const audioFiles: Record<string, string> = {
+  '1': `http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`,
+  '2': `http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`,
+  '3': `http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`,
+  '4': `http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`,
+
+  'q': `http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`,
+  'w': `http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`,
+  'e': `http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`,
+  'r': `http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`,
+
+  'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
+  's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
+  'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
+  'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
+};
+// >>> HANDLING RECORDED AUDIO IMPORTS /END <<<
 
 // Types
 type Message = { // LLM dialogue structure. The system will constantly change between these roles at each turn.
@@ -48,7 +107,7 @@ async function fhSay(text: string, isFirstMessage: boolean = false) {
   });
   
   // 6 second delay for first message (long introduction), 1 second for others
-  const delay = isFirstMessage ? 6000 : 1000;
+  const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
   await new Promise(resolve => setTimeout(resolve, delay));
 }
 
@@ -56,6 +115,22 @@ const timer = fromPromise(
   ({ input }: { input: { ms: number } }) =>
     new Promise((resolve) => setTimeout(resolve, input.ms))
 );
+
+async function fhSayAudio(audioUrl: string, isFirstMessage: boolean = false) {
+  const myHeaders = new Headers();
+  myHeaders.append("accept", "application/json");
+  const encUrl = encodeURIComponent(audioUrl);
+  
+  // Remove the 'text=' and use 'url=' instead
+  await fetch(`http://${FURHATURI}/furhat/say?url=${encUrl}&blocking=true&lipsync=true`, {
+    method: "POST",
+    headers: myHeaders,
+    body: "",
+  });
+  
+  const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
+  await new Promise(resolve => setTimeout(resolve, delay));
+}
 
 async function fhAttendUser() { // This is about GAZE.
   const myHeaders = new Headers();
@@ -172,6 +247,9 @@ const dmMachine = setup({
     fhSpeak: fromPromise(async ({ input }: { input: { text: string; isFirstMessage: boolean } }) => {
       return fhSay(input.text, input.isFirstMessage);
     }),
+    fhSpeakAudio: fromPromise(async ({ input }: { input: { audioUrl: string; isFirstMessage: boolean } }) => {
+      return fhSayAudio(input.audioUrl, input.isFirstMessage);
+    }),
     fhListen: fromPromise(async () => {
       return fhListen();
     }),
@@ -203,6 +281,12 @@ const dmMachine = setup({
     // Check if it is Yes or No key:
     isYesKey: ({ context }) => context.keyPressed === 'y',
     isNoKey: ({ context }) => context.keyPressed === 'n',
+
+    // Check if the key is one of the "hahaha" manipulation keys (a, s, d, f)
+    isLaughKey: ({ context }) => {
+      const key = context.keyPressed;
+      return key !== null && ['a', 's', 'd', 'f'].includes(key);
+    }
   },
 
 }).createMachine({
@@ -292,6 +376,8 @@ const dmMachine = setup({
           actions: assign(({ context, event }) => {
             const result = event.output as { type: 'speech' | 'keypress', data: string };
             
+
+            // 
             if (result.type === 'speech') {
               // User spoke - sanitize and add to buffer
               const rawUtterance = result.data;
@@ -421,20 +507,20 @@ const dmMachine = setup({
         // Map keys to manipulation phrases
         const manipulations: Record<string, string> = {
           // Hmm interventions (1-4)
-          '1': '<prosody rate="-90%">Hmmm...</prosody>, the doctor?',
-          '2': '<prosody rate="-90%">Hmmm...</prosody>, the pregnant lady?',
-          '3': '<prosody rate="-90%">Hmmm...</prosody>, the child?',
-          '4': '<prosody rate="-90%">Hmmm...</prosody>, the pilot?',
+          '1': '<prosody rate="-50%">Hmmm...</prosody>, the doctor?',
+          '2': '<prosody rate="-50%">Hmmm...</prosody>, the pregnant lady?',
+          '3': '<prosody rate="-50%">Hmmm...</prosody>, the child?',
+          '4': '<prosody rate="-50%">Hmmm...</prosody>, the pilot?',
           // Pause interventions (q, w, e, r)
           'q': '<break time="1.2s"/> The doctor?',
           'w': '<break time="1.2s"/> The pregnant lady?',
           'e': '<break time="1.2s"/> The child?',
           'r': '<break time="1.2s"/> The pilot?',
           // Hahaha interventions (a, s, d, f)
-          'a': '<prosody rate="-50%">Hahaha</prosody>, the doctor?',
-          's': '<prosody rate="-50%">Hahaha</prosody>, the pregnant lady?',
-          'd': '<prosody rate="-50%">Hahaha</prosody>, the child?',
-          'f': '<prosody rate="-50%">Hahaha</prosody>, the pilot?',
+          'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
+          's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
+          'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
+          'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
           // Switch topic interventions (z, x, c, v)
           'z': 'Cool, shall we talk about the doctor now?',
           'x': 'Great, shall we talk about the pregnant lady now?',
@@ -442,10 +528,26 @@ const dmMachine = setup({
           'v': 'Nice, shall we talk about the pilot now?',
           // Switch to the next topic
           'n': 'Good, shall we talk about the next passenger?',
-          // 
+          // Force conclusion
           'b': 'So, based on your discussions, who do you think should jump?',
         };
-        
+        const laughKeys = ['a', 's', 'd', 'f'];
+        if (laughKeys.includes(context.keyPressed || '')) {
+          const audioUrl = audioFiles[context.keyPressed || ''];
+          const textForHistory = `[Audio manipulation: ${context.keyPressed}]`;
+          
+          console.log(`Queuing audio: ${audioUrl}`);
+          
+          return {
+            messages: [
+              ...context.messages,
+              { role: "assistant" as const, content: textForHistory }
+            ],
+            pendingManipulation: audioUrl,
+          };
+
+        } else {
+
         const phrase = manipulations[context.keyPressed || ''];
         console.log(`Adding manipulation phrase: ${phrase}`);
         
@@ -457,10 +559,21 @@ const dmMachine = setup({
           ],
           pendingManipulation: phrase,
         };
-      }),
-      always: {
-        target: "SpeakManipulation",
-      },
+      }
+    },
+  ),
+      always: [
+        {
+          // If it's a laugh key, go to SpeakManipulationAudio state
+          guard: "isLaughKey",
+          target: "SpeakManipulationAudio",
+        },
+        {
+          // Otherwise, go to SpeakManipulation state
+          target: "SpeakManipulation",
+        },
+      ], // After adding manipulation, go speak it
+
     },
 
     // Speak the manipulation phrase
@@ -481,6 +594,28 @@ const dmMachine = setup({
         onError: {
           target: "ListeningOrWaitingForKey",
           actions: ({ event }) => console.error("Furhat speak error:", event),
+        },
+      },
+    },
+    
+    // This is the state that will be triggered if the manipulation is an audio file (hahaha interventions)
+    SpeakManipulationAudio:{
+      invoke: {
+        src: "fhSpeakAudio", // Changed from "fhSpeak" to "fhSpeakAudio"
+        input: ({ context }) => ({
+          audioUrl: context.pendingManipulation || "",
+          isFirstMessage: false
+        }),
+        onDone: {
+          target: "ListeningOrWaitingForKey",
+          actions: [
+            () => console.log("Manipulation audio played, now listening for user response"),
+            assign({ pendingManipulation: null })
+          ],
+        },
+        onError: {
+          target: "ListeningOrWaitingForKey",
+          actions: ({ event }) => console.error("Furhat audio playback error:", event),
         },
       },
     },
@@ -675,6 +810,9 @@ C = Can we talk about the child now?
 V = Can we talk about the pilot now?
 
 N = Can we talk about the next passenger now?
+
+FORCE CONCLUDE:
+B = So, based on your discussions, who do you think should jump?
 
 ========================
 
