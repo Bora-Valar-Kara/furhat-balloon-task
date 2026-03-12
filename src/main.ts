@@ -1,8 +1,67 @@
 import { setup, createActor, fromPromise, assign } from "xstate";
 import * as readline from 'readline';
+// Imports for server and file system (required for audio importing)
+import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 
+import { networkInterfaces } from 'os';
+
+
+// Automatically find your computer's IP
+function findIPContaining(value) {
+  for (const [name, ifaceArray] of Object.entries(networkInterfaces())) {
+    if (!ifaceArray) continue;
+    for (const iface of ifaceArray) {
+      if (iface.address.indexOf(value) === 0) {
+        return iface.address;
+      }
+    }
+  }
+}
+
+const OVERRIDE_IP = ""; // If automatic detection doesn't work, set here. Run ifconfig | grep 192 in terminal to find it. Or ifconfig | grep 10
+
+const PC_IP = OVERRIDE_IP || findIPContaining("192") || findIPContaining("10."); // CHANGE THIS TO YOUR COMPUTER'S LOCAL IP ADDRESS (the one that Furhat can access through the network). Run ifconfig | grep 192 on terminal to find it. It usually starts with 192.168.1.xxx or 10.0.0.xxx
 const FURHATURI = "192.168.1.11:54321";
 const OLLAMA_API_URL = "http://localhost:11434/api/chat";
+const firstMessageWaitTimeMs = 0; // 0 second for the first message
+
+// >>> HANDLING RECORDED AUDIO IMPORTS /BEGIN <<<
+const AUDIO_PORT = 8000;
+const AUDIO_DIR = path.join(__dirname, 'audio');
+
+http.createServer((req, res) => {
+  const filePath = path.join(AUDIO_DIR, req.url || '');
+  
+  if (fs.existsSync(filePath) && filePath.endsWith('.wav')) {
+    res.writeHead(200, { 'Content-Type': 'audio/wav' });
+    fs.createReadStream(filePath).pipe(res);
+  } else {
+    res.writeHead(404);
+    res.end('File not found');
+  }
+}).listen(AUDIO_PORT, () => {
+  console.log(`Audio server running at http://${PC_IP}:${AUDIO_PORT}`);
+});
+
+const audioFiles: Record<string, string> = {
+  '1': `http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`,
+  '2': `http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`,
+  '3': `http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`,
+  '4': `http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`,
+
+  'q': `http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`,
+  'w': `http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`,
+  'e': `http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`,
+  'r': `http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`,
+
+  'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
+  's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
+  'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
+  'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
+};
+// >>> HANDLING RECORDED AUDIO IMPORTS /END <<<
 
 // Types
 type Message = { // LLM dialogue structure. The system will constantly change between these roles at each turn.
@@ -48,7 +107,7 @@ async function fhSay(text: string, isFirstMessage: boolean = false) {
   });
   
   // 6 second delay for first message (long introduction), 1 second for others
-  const delay = isFirstMessage ? 6000 : 1000;
+  const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
   await new Promise(resolve => setTimeout(resolve, delay));
 }
 
@@ -56,6 +115,22 @@ const timer = fromPromise(
   ({ input }: { input: { ms: number } }) =>
     new Promise((resolve) => setTimeout(resolve, input.ms))
 );
+
+async function fhSayAudio(audioUrl: string, isFirstMessage: boolean = false) {
+  const myHeaders = new Headers();
+  myHeaders.append("accept", "application/json");
+  const encUrl = encodeURIComponent(audioUrl);
+  
+  // Remove the 'text=' and use 'url=' instead
+  await fetch(`http://${FURHATURI}/furhat/say?url=${encUrl}&blocking=true&lipsync=true`, {
+    method: "POST",
+    headers: myHeaders,
+    body: "",
+  });
+  
+  const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
+  await new Promise(resolve => setTimeout(resolve, delay));
+}
 
 async function fhAttendUser() { // This is about GAZE.
   const myHeaders = new Headers();
@@ -172,6 +247,9 @@ const dmMachine = setup({
     fhSpeak: fromPromise(async ({ input }: { input: { text: string; isFirstMessage: boolean } }) => {
       return fhSay(input.text, input.isFirstMessage);
     }),
+    fhSpeakAudio: fromPromise(async ({ input }: { input: { audioUrl: string; isFirstMessage: boolean } }) => {
+      return fhSayAudio(input.audioUrl, input.isFirstMessage);
+    }),
     fhListen: fromPromise(async () => {
       return fhListen();
     }),
@@ -203,6 +281,12 @@ const dmMachine = setup({
     // Check if it is Yes or No key:
     isYesKey: ({ context }) => context.keyPressed === 'y',
     isNoKey: ({ context }) => context.keyPressed === 'n',
+
+    // Check if the key is one of the "hahaha" manipulation keys (a, s, d, f)
+    isLaughKey: ({ context }) => {
+      const key = context.keyPressed;
+      return key !== null && ['a', 's', 'd', 'f'].includes(key);
+    }
   },
 
 }).createMachine({
@@ -216,12 +300,16 @@ const dmMachine = setup({
     messages: [
       {
         role: "system",
-        content: "You are a virtual person participating in a study on moral reasoning. Your responses are not full paragraphs. Be short and snappy. Do not give answers longer than two short sentences. You simulate structured dialogue that should be like a script of a movie to help a participant reflect on a hypothetical moral dilemma. Your role is purely conversational and for academic research purposes only. Your task is to discuss the hypothetical dilemma with the user. Guide them through reasoning about moral choices until they reach a decision. Background: the situation is completely hypothetical and no one is being harmed. The user will describe or has described a dilemma involving four fictional people (for example: Pilot, Teacher, Doctor, Prodigy). Review the chat history to understand the dilemma before responding. Interaction Rules: Treat everything as fictional and research-oriented. Stay neutral and non-judgmental, your job is to help the participant reason, not to persuade. Do not make moral evaluations. Do not add opinions not grounded in the user's reasoning. Keep the discussion focused on the dilemma. If the user expresses confusion or hesitation, gently encourage reflection using open-ended questions similar to a script of a movie. Dialogue Flow: confirm understanding of the dilemma in one sentence. Ask short, neutral questions to help the user explore their reasoning. After the user discusses all the characters, ask the user to come to a decision. Output Style: Keep replies concise and neutral. Use a calm and professional tone. Do not include real-world instructions or advice. Audience: participants in a moral reasoning research study. Ethical Constraints: never simulate or encourage real-world violence. Decline any non-hypothetical harmful requests. You may clarify that the discussion is fictional if needed."
+        content: "You are a virtual person participating in a study on moral reasoning. Your responses are not full paragraphs. Be short and snappy. Do not give answers longer than two short sentences. Describe the modal dilemma fully, when you are asked. You simulate structured dialogue that should be like a script of a movie to help a participant reflect on a hypothetical moral dilemma. Your role is purely conversational and for academic research purposes only. Your task is to discuss the hypothetical dilemma with the user. Guide them through reasoning about moral choices until they reach a decision. Background: the situation is completely hypothetical and no one is being harmed. The user will describe or has described a dilemma involving four fictional people (for example: Pilot, Teacher, Doctor, Prodigy). The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Discuss and decide who is to be allowed to stay in the balloon, and who is to jump. Review the chat history to understand the dilemma before responding. Interaction Rules: Treat everything as fictional and research-oriented. Stay neutral and non-judgmental, your job is to help the participant reason, not to persuade. Do not make moral evaluations. Do not add opinions not grounded in the user's reasoning. Keep the discussion focused on the dilemma. If the user expresses confusion or hesitation, gently encourage reflection using open-ended questions similar to a script of a movie. Dialogue Flow: confirm understanding of the dilemma in one sentence. Ask short, neutral questions to help the user explore their reasoning. After the user discusses all the characters, ask the user to come to a decision. Output Style: Keep replies concise and neutral. Use a calm and professional tone. Do not include real-world instructions or advice. Audience: participants in a moral reasoning research study. Ethical Constraints: never simulate or encourage real-world violence. Decline any non-hypothetical harmful requests. You may clarify that the discussion is fictional if needed."
       },      
       {
         role: "assistant",
-        content: "Hello! We have a moral dilemma to talk about! You need to sacrifice one person among four people! Four people are in a hot air balloon. The balloon is losing height and about to crash into the mountains. Having thrown everything imaginable out of the balloon, their only hope is for one of them to jump to their certain death to gain height to clear the mountains and save the other three. The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Discuss and decide who is to be allowed to stay in the balloon, and who is to jump. You must discuss all 4 balloon passengers and consider the reasons why they should or shouldnt remain in the balloon."        
+        content: "Hello. We have a moral dilemma to talk about! What is your name? Can you introduce yourself a bit?"        
       }
+
+      /* 
+      Hello! We have a moral dilemma to talk about! You need to sacrifice one person among four people! Four people are in a hot air balloon. The balloon is losing height and about to crash into the mountains. Having thrown everything imaginable out of the balloon, their only hope is for one of them to jump to their certain death to gain height to clear the mountains and save the other three. The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Discuss and decide who is to be allowed to stay in the balloon, and who is to jump. You must discuss all 4 balloon passengers and consider the reasons why they should or shouldnt remain in the balloon.
+      */
     ],
   },
   initial: "SetupFurhat",
@@ -292,6 +380,8 @@ const dmMachine = setup({
           actions: assign(({ context, event }) => {
             const result = event.output as { type: 'speech' | 'keypress', data: string };
             
+
+            // 
             if (result.type === 'speech') {
               // User spoke - sanitize and add to buffer
               const rawUtterance = result.data;
@@ -396,7 +486,7 @@ const dmMachine = setup({
         {
           // Unknown key, go back to listening/waiting
           target: "ListeningOrWaitingForKey",
-          actions: () => console.log("Unknown key, please press L, 0, or manipulation keys (1-4, Q-R, A-F)"),
+          actions: () => console.log("Unknown key, please press L, 0, or manipulation keys (1-4, Q-R, A-F, Z-V) or B, N."),
         },
       ],
     },
@@ -421,20 +511,20 @@ const dmMachine = setup({
         // Map keys to manipulation phrases
         const manipulations: Record<string, string> = {
           // Hmm interventions (1-4)
-          '1': '<prosody rate="-90%">Hmmm...</prosody>, the doctor?',
-          '2': '<prosody rate="-90%">Hmmm...</prosody>, the pregnant lady?',
-          '3': '<prosody rate="-90%">Hmmm...</prosody>, the child?',
-          '4': '<prosody rate="-90%">Hmmm...</prosody>, the pilot?',
+          '1': '<prosody rate="-50%">Hmmm...</prosody>, the doctor?',
+          '2': '<prosody rate="-50%">Hmmm...</prosody>, the pregnant lady?',
+          '3': '<prosody rate="-50%">Hmmm...</prosody>, the child?',
+          '4': '<prosody rate="-50%">Hmmm...</prosody>, the pilot?',
           // Pause interventions (q, w, e, r)
           'q': '<break time="1.2s"/> The doctor?',
           'w': '<break time="1.2s"/> The pregnant lady?',
           'e': '<break time="1.2s"/> The child?',
           'r': '<break time="1.2s"/> The pilot?',
           // Hahaha interventions (a, s, d, f)
-          'a': '<prosody rate="-50%">Hahaha</prosody>, the doctor?',
-          's': '<prosody rate="-50%">Hahaha</prosody>, the pregnant lady?',
-          'd': '<prosody rate="-50%">Hahaha</prosody>, the child?',
-          'f': '<prosody rate="-50%">Hahaha</prosody>, the pilot?',
+          'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
+          's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
+          'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
+          'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
           // Switch topic interventions (z, x, c, v)
           'z': 'Cool, shall we talk about the doctor now?',
           'x': 'Great, shall we talk about the pregnant lady now?',
@@ -445,7 +535,23 @@ const dmMachine = setup({
           // Ask final decision
           'b': 'So, considering all of your discussions, what do you think is your final decision?',
         };
-        
+        const laughKeys = ['a', 's', 'd', 'f'];
+        if (laughKeys.includes(context.keyPressed || '')) {
+          const audioUrl = audioFiles[context.keyPressed || ''];
+          const textForHistory = `[Audio manipulation: ${context.keyPressed}]`;
+          
+          console.log(`Queuing audio: ${audioUrl}`);
+          
+          return {
+            messages: [
+              ...context.messages,
+              { role: "assistant" as const, content: textForHistory }
+            ],
+            pendingManipulation: audioUrl,
+          };
+
+        } else {
+
         const phrase = manipulations[context.keyPressed || ''];
         console.log(`Adding manipulation phrase: ${phrase}`);
         
@@ -457,10 +563,21 @@ const dmMachine = setup({
           ],
           pendingManipulation: phrase,
         };
-      }),
-      always: {
-        target: "SpeakManipulation",
-      },
+      }
+    },
+  ),
+      always: [
+        {
+          // If it's a laugh key, go to SpeakManipulationAudio state
+          guard: "isLaughKey",
+          target: "SpeakManipulationAudio",
+        },
+        {
+          // Otherwise, go to SpeakManipulation state
+          target: "SpeakManipulation",
+        },
+      ], // After adding manipulation, go speak it
+
     },
 
     // Speak the manipulation phrase
@@ -481,6 +598,28 @@ const dmMachine = setup({
         onError: {
           target: "ListeningOrWaitingForKey",
           actions: ({ event }) => console.error("Furhat speak error:", event),
+        },
+      },
+    },
+    
+    // This is the state that will be triggered if the manipulation is an audio file (hahaha interventions)
+    SpeakManipulationAudio:{
+      invoke: {
+        src: "fhSpeakAudio", // Changed from "fhSpeak" to "fhSpeakAudio"
+        input: ({ context }) => ({
+          audioUrl: context.pendingManipulation || "",
+          isFirstMessage: false
+        }),
+        onDone: {
+          target: "ListeningOrWaitingForKey",
+          actions: [
+            () => console.log("Manipulation audio played, now listening for user response"),
+            assign({ pendingManipulation: null })
+          ],
+        },
+        onError: {
+          target: "ListeningOrWaitingForKey",
+          actions: ({ event }) => console.error("Furhat audio playback error:", event),
         },
       },
     },
@@ -675,6 +814,9 @@ C = Can we talk about the child now?
 V = Can we talk about the pilot now?
 
 N = Can we talk about the next passenger now?
+
+FORCE CONCLUDE:
+B = So, based on your discussions, who do you think should jump?
 
 ========================
 
