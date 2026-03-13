@@ -9,7 +9,7 @@ import { networkInterfaces } from 'os';
 
 
 // Automatically find your computer's IP
-function findIPContaining(value) {
+function findIPContaining(value: string) {
   for (const [name, ifaceArray] of Object.entries(networkInterfaces())) {
     if (!ifaceArray) continue;
     for (const iface of ifaceArray) {
