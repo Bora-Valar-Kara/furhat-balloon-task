@@ -151,9 +151,16 @@ async function fhAttendUser() { // This is about GAZE.
 async function fhListen(): Promise<string> { // Furhat's own ASR.
   const myHeaders = new Headers();
   myHeaders.append("accept", "application/json");
-  return fetch(`http://${FURHATURI}/furhat/listen`, {
-    method: "GET",
+
+  return fetch(`http://${FURHATURI}/furhat/listen/stop`, {
+    method: "POST",
     headers: myHeaders,
+  }).then(() => {
+    console.log("(Re)starting to listen...");
+    return fetch(`http://${FURHATURI}/furhat/listen`, {
+      method: "GET",
+      headers: myHeaders,
+    });
   })
     .then((response) => response.body)
     .then((body) => body!.getReader().read())
