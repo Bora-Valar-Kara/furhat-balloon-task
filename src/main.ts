@@ -206,8 +206,6 @@ async function fetchChatCompletion(messages: Message[]): Promise<string> {
 async function waitForKeypress(): Promise<string> {
   return new Promise((resolve) => {
     const handler = (str: string, key: any) => {
-      process.stdin.off('keypress', handler);
-      
       // Handle Ctrl+C to exit gracefully
       if (key.ctrl && key.name === 'c') {
         console.log('\nExiting...');
@@ -216,6 +214,7 @@ async function waitForKeypress(): Promise<string> {
       
       resolve(key.name.toLowerCase());
     };
+    process.stdin.removeAllListeners('keypress');
     process.stdin.once('keypress', handler);
   });
 }
