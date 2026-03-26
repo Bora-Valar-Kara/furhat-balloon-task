@@ -151,7 +151,8 @@ async function fhAttendUser() { // This is about GAZE.
 async function fhListen(): Promise<string> { // Furhat's own ASR.
   const myHeaders = new Headers();
   myHeaders.append("accept", "application/json");
-// Before listenıng, we send a request to stop listening in case Furhat is still processing previous audio. This is a workaround to prevent the problem of Furhat not responding after the first turn due to some issue with the listen endpoint. After sending the stop command, we immediately send the listen command again to start listening for new input.
+
+  // Before listenıng, we send a request to stop listening in case Furhat is still processing previous audio. This is a workaround to prevent the problem of Furhat not responding after the first turn due to some issue with the listen endpoint. After sending the stop command, we immediately send the listen command again to start listening for new input.
   return fetch(`http://${FURHATURI}/furhat/listen/stop`, {
     method: "POST",
     headers: myHeaders,
@@ -206,8 +207,6 @@ async function fetchChatCompletion(messages: Message[]): Promise<string> {
 async function waitForKeypress(): Promise<string> {
   return new Promise((resolve) => {
     const handler = (str: string, key: any) => {
-      process.stdin.off('keypress', handler);
-      
       // Handle Ctrl+C to exit gracefully
       if (key.ctrl && key.name === 'c') {
         console.log('\nExiting...');
@@ -216,6 +215,7 @@ async function waitForKeypress(): Promise<string> {
       
       resolve(key.name.toLowerCase());
     };
+    process.stdin.removeAllListeners('keypress');
     process.stdin.once('keypress', handler);
   });
 }
