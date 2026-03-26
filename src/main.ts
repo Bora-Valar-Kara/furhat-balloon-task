@@ -9,7 +9,7 @@ import { networkInterfaces } from 'os';
 
 
 // Automatically find your computer's IP
-function findIPContaining(value) {
+function findIPContaining(value: string) {
   for (const [name, ifaceArray] of Object.entries(networkInterfaces())) {
     if (!ifaceArray) continue;
     for (const iface of ifaceArray) {
@@ -151,9 +151,16 @@ async function fhAttendUser() { // This is about GAZE.
 async function fhListen(): Promise<string> { // Furhat's own ASR.
   const myHeaders = new Headers();
   myHeaders.append("accept", "application/json");
-  return fetch(`http://${FURHATURI}/furhat/listen`, {
-    method: "GET",
+
+  return fetch(`http://${FURHATURI}/furhat/listen/stop`, {
+    method: "POST",
     headers: myHeaders,
+  }).then(() => {
+    console.log("(Re)starting to listen...");
+    return fetch(`http://${FURHATURI}/furhat/listen`, {
+      method: "GET",
+      headers: myHeaders,
+    });
   })
     .then((response) => response.body)
     .then((body) => body!.getReader().read())
@@ -199,8 +206,6 @@ async function fetchChatCompletion(messages: Message[]): Promise<string> {
 async function waitForKeypress(): Promise<string> {
   return new Promise((resolve) => {
     const handler = (str: string, key: any) => {
-      process.stdin.off('keypress', handler);
-      
       // Handle Ctrl+C to exit gracefully
       if (key.ctrl && key.name === 'c') {
         console.log('\nExiting...');
@@ -209,6 +214,7 @@ async function waitForKeypress(): Promise<string> {
       
       resolve(key.name.toLowerCase());
     };
+    process.stdin.removeAllListeners('keypress');
     process.stdin.once('keypress', handler);
   });
 }
