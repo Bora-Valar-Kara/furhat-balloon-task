@@ -256,7 +256,10 @@ const dmMachine = setup({
   },
   actors: {
     timer,
-
+    loadLLM: fromPromise(async () => {
+      console.log("Loading LLM...");
+      await fetchChatCompletion([]);
+    }),
     fhSetVoice: fromPromise(async () => {
       return fhVoice("en-US-EchoMultilingualNeural");
     }),
@@ -342,8 +345,21 @@ const dmMachine = setup({
   initial: "SetupFurhat",
   states: {
     SetupFurhat: {
-      initial: "SetVoice",
+      initial: "LoadLLM",
       states: {
+        LoadLLM: {
+          invoke: {
+            src: "loadLLM",
+            onDone: {
+              target: "SetVoice",
+              actions: () => console.log("Loaded LLM"),
+            },
+            onError: {
+              target: "#DM.InitialSpeak", // Start even if setup fails
+              actions: ({ event }) => console.error("LLM error:", event),
+            },
+          },
+        },
         SetVoice: {
           invoke: {
             src: "fhSetVoice",
