@@ -584,7 +584,21 @@ const dmMachine = setup({
         // Otherwise, it adds a text manipulation phrase for guidance keys (z-v, n, b).
       if (hypothesisKeys.includes(context.keyPressed || '')) { 
           const audioUrl = audioFiles[context.keyPressed || ''];
-          const textForHistory = `[Audio manipulation: ${context.keyPressed}]`;
+          const audioTranscripts: Record<string, string> = {
+            '1': 'Hmm, the doctor?',
+            '2': 'Hmm, the pregnant lady?',
+            '3': 'Hmm, the child?',
+            '4': 'Hmm, the pilot?',
+            'q': '..., the doctor?',
+            'w': '..., the pregnant lady?',
+            'e': '..., the child?',
+            'r': '..., the pilot?',
+            'a': 'Hahaha, the doctor?',
+            's': 'Hahaha, the pregnant lady?',
+            'd': 'Hahaha, the child?',
+            'f': 'Hahaha, the pilot?',
+          };
+          const textForHistory = audioTranscripts[context.keyPressed || ''] ?? `[Audio manipulation: ${context.keyPressed}]`;
           
           console.log(`Queuing audio: ${audioUrl}`);
           
