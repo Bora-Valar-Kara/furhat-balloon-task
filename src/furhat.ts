@@ -1,7 +1,37 @@
-import { fromPromise } from "xstate";
-
 const firstMessageWaitTimeMs = 0; // 0 second for the first message
 const FURHATURI = "192.168.1.11:54321";
+
+export const realFurhat = {
+  async setVoice(name: string) {
+    return await fhVoice(name);
+  },
+  async say(text: string, isFirstMessage: boolean = false) {
+    return await fhSay(text, isFirstMessage);
+  },
+  async sayAudio(audioUrl: string, isFirstMessage: boolean = false) {
+    return await fhSayAudio(audioUrl, isFirstMessage);
+  },
+  async attendUser() {
+    return await fhAttendUser();
+  },
+  async listen(): Promise<string> {
+    return await fhListen();
+  }
+}
+
+export const fakeFurhat = {
+  async setVoice(name: string) {},
+  async say(text: string, isFirstMessage: boolean = false) {
+    console.log("FURHAT SAYS: " + text);
+  },
+  async sayAudio(audioUrl: string, isFirstMessage: boolean = false) {
+    console.log("FURHAT SAYS AUDIO FILE: " + audioUrl);
+  },
+  async attendUser() {},
+  async listen(): Promise<string> {
+    return new Promise((resolve) => setTimeout(resolve, 3000)).then(() => "User said something");
+  }
+}
 
 // Furhat API functions
 export async function fhVoice(name: string) { // fh functions are fetched from Furhat's URI. They are ready-made functions.
@@ -29,11 +59,6 @@ export async function fhSay(text: string, isFirstMessage: boolean = false) {
   const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
   await new Promise(resolve => setTimeout(resolve, delay));
 }
-
-export const timer = fromPromise(
-  ({ input }: { input: { ms: number } }) =>
-    new Promise((resolve) => setTimeout(resolve, input.ms))
-);
 
 export async function fhSayAudio(audioUrl: string, isFirstMessage: boolean = false) {
   const myHeaders = new Headers();

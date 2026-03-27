@@ -1,6 +1,5 @@
 import { fromPromise } from "xstate";
 import * as readline from 'readline';
-import { fhListen } from "./furhat";
 
 // Setup readline interface for keyboard input in Node.js
 readline.emitKeypressEvents(process.stdin);
@@ -24,12 +23,3 @@ export async function waitForKeypress(): Promise<string> {
     process.stdin.once('keypress', handler);
   });
 }
-
-// NEW: Combined actor that races between listening and waiting for keypress
-export const listenOrKeypress = fromPromise(async () => {
-  return Promise.race([
-    fhListen().then(result => ({ type: 'speech' as const, data: result })),
-    waitForKeypress().then(result => ({ type: 'keypress' as const, data: result }))
-  ]);
-});
-

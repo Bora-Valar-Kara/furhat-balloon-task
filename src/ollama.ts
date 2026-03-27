@@ -35,3 +35,7 @@ export async function fetchChatCompletion(messages: Message[]): Promise<string> 
     return "Error while connecting to the language model. Probably ssh tunnel is not active.";
   }
 }
+
+export async function fetchChatCompletionNoOllama(messages: Message[]): Promise<string> {
+    return "This is just a test";
+}

@@ -1,9 +1,26 @@
 import { setup, createActor, fromPromise, assign } from "xstate";
 import { Message, DMContext } from "./types";
-import { timer, fhVoice, fhAttendUser, fhSay, fhSayAudio, fhListen, sanitizeUtterance } from "./furhat";
-import { fetchChatCompletion } from "./ollama";
-import { waitForKeypress, listenOrKeypress } from "./keypress";
+import { fakeFurhat, sanitizeUtterance } from "./furhat";
+import { fetchChatCompletion, fetchChatCompletionNoOllama } from "./ollama";
+import { waitForKeypress } from "./keypress";
 import { allManipulationKeys, hypothesisKeys, manipulations, audioFiles } from "./audio_manipulations";
+
+const timer = fromPromise(
+  ({ input }: { input: { ms: number } }) =>
+    new Promise((resolve) => setTimeout(resolve, input.ms))
+);
+
+//const chatCompletion = fetchChatCompletion;
+const chatCompletion = fetchChatCompletionNoOllama;
+const furhat = fakeFurhat;
+
+// NEW: Combined actor that races between listening and waiting for keypress
+const listenOrKeypress = fromPromise(async () => {
+  return Promise.race([
+    furhat.listen().then(result => ({ type: 'speech' as const, data: result })),
+    waitForKeypress().then(result => ({ type: 'keypress' as const, data: result }))
+  ]);
+});
 
 // State machine
 const dmMachine = setup({
@@ -14,26 +31,26 @@ const dmMachine = setup({
     timer,
     loadLLM: fromPromise(async () => {
       console.log("Loading LLM...");
-      await fetchChatCompletion([]);
+      await chatCompletion([]);
     }),
     fhSetVoice: fromPromise(async () => {
-      return fhVoice("en-US-EchoMultilingualNeural");
+      return furhat.setVoice("en-US-EchoMultilingualNeural");
     }),
     fhAttend: fromPromise(async () => {
-      return fhAttendUser();
+      return furhat.attendUser();
     }),
     fhSpeak: fromPromise(async ({ input }: { input: { text: string; isFirstMessage: boolean } }) => {
-      return fhSay(input.text, input.isFirstMessage);
+      return furhat.say(input.text, input.isFirstMessage);
     }),
     fhSpeakAudio: fromPromise(async ({ input }: { input: { audioUrl: string; isFirstMessage: boolean } }) => {
-      return fhSayAudio(input.audioUrl, input.isFirstMessage);
+      return furhat.sayAudio(input.audioUrl, input.isFirstMessage);
     }),
     fhListen: fromPromise(async () => {
-      return fhListen();
+      return furhat.listen();
     }),
     chatCompletion: fromPromise(
       async ({ input }: { input: { messages: Message[] } }) => {
-        const response = await fetchChatCompletion(input.messages);
+        const response = await chatCompletion(input.messages);
         return response;
       }
     ),
