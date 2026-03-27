@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 import { networkInterfaces } from 'os';
+import { Manipulation } from './types';
 
 // Automatically find your computer's IP
 function findIPContaining(value: string) {
@@ -40,60 +41,60 @@ http.createServer((req, res) => {
   console.log(`Audio server running at http://${PC_IP}:${AUDIO_PORT}`);
 });
 
-export const audioFiles: Record<string, string> = {
-  '1': `http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`,
-  '2': `http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`,
-  '3': `http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`,
-  '4': `http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`,
+function text(text: string): Manipulation {
+    // Create a text manipulation
+    return {
+        audioUri: undefined,
+        text
+    }
+}
 
-  'q': `http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`,
-  'w': `http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`,
-  'e': `http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`,
-  'r': `http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`,
-
-  'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
-  's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
-  'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
-  'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
-};
-// >>> HANDLING RECORDED AUDIO IMPORTS /END <<<
-
-const laughterKeys = ['a', 's', 'd', 'f'];
-const pauseKeys = ['q', 'w', 'e', 'r'];
-const filledPauseKeys = ['1', '2', '3', '4'];
-export const hypothesisKeys = [...laughterKeys, ...pauseKeys, ...filledPauseKeys];
-
-const switchTopicKeys = ['z', 'x', 'c', 'v'];
-const forceConcludeKey = 'b';
-const nextTopicKey = 'n';
-const guidanceKeys = [...switchTopicKeys, forceConcludeKey, nextTopicKey];
-
-export const allManipulationKeys = [...hypothesisKeys, ...guidanceKeys];
+function audioFile(filename: string): Manipulation {
+    // Create an audio file manipulation
+    return {
+        audioUri: filename,
+        text: undefined
+    }
+}
 
 // Map keys to manipulation phrases
-export const manipulations: Record<string, string> = {
-    // Hmm interventions (1-4) -- audio cued
-    '1': `http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`,
-    '2': `http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`,
-    '3': `http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`,
-    '4': `http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`,
-    // Pause versions (q, w, e, r) -- audio cued
-    'q': `http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`,
-    'w': `http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`,
-    'e': `http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`,
-    'r': `http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`,
-    // Hahaha interventions (a, s, d, f) -- audio cued
-    'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
-    's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
-    'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
-    'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
+export const manipulations: Record<string, Manipulation> = {
     // Switch topic interventions (z, x, c, v) -- direct text manipulation
-    'z': 'Cool, shall we talk about the doctor now?',
-    'x': 'Great, shall we talk about the pregnant lady now?',
-    'c': 'Perfect, shall we talk about the child now?',
-    'v': 'Nice, shall we talk about the pilot now?',
+    'z': text('Cool, shall we talk about the doctor now?'),
+    'x': text('Great, shall we talk about the pregnant lady now?'),
+    'c': text('Perfect, shall we talk about the child now?'),
+    'v': text('Nice, shall we talk about the pilot now?'),
     // Switch to the next topic -- direct text manipulation
-    'n': 'Good, shall we talk about the next passenger?',
+    'n': text('Good, shall we talk about the next passenger?'),
     // Force conclusion -- direct text manipulation
-    'b': 'So, based on your discussions, who do you think should jump?',
+    'b': text('So, based on your discussions, who do you think should jump?'),
 };
+export const allManipulationKeys = Object.keys(manipulations);
+
+export const newManipulations: Record<string, Manipulation[]> = {
+    hmm: [
+        // Hmm interventions (1-4) -- audio cued
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`),
+    ],
+    pause: [
+        // Pause versions (q, w, e, r) -- audio cued
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`),
+    ],
+    laughter: [
+        // Hahaha interventions (a, s, d, f) -- audio cued
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`),
+    ]
+}
+
+export function interventionTypes(): string[] {
+    return Object.keys(newManipulations);
+}

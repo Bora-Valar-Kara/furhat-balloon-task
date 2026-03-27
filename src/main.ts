@@ -1,9 +1,9 @@
 import { setup, createActor, fromPromise, assign } from "xstate";
-import { Message, DMContext } from "./types";
+import { Message, DMContext, Manipulation } from "./types";
 import { fakeFurhat, sanitizeUtterance } from "./furhat";
 import { fetchChatCompletion, fetchChatCompletionNoOllama } from "./ollama";
 import { waitForKeypress } from "./keypress";
-import { allManipulationKeys, hypothesisKeys, manipulations, audioFiles } from "./audio_manipulations";
+import { allManipulationKeys, newManipulations, manipulations, interventionTypes } from "./audio_manipulations";
 
 const timer = fromPromise(
   ({ input }: { input: { ms: number } }) =>
@@ -29,6 +29,17 @@ const dmMachine = setup({
   },
   actors: {
     timer,
+    chooseInterventionType: fromPromise(async () => {
+      console.log("Choose interventions:");
+      const interventionOptions = interventionTypes();
+      for (let i = 0; i < interventionOptions.length; i++) {
+        console.log(`${i + 1}: ${interventionOptions[i]}`);
+      }
+      const chosen = await waitForKeypress();
+      const chooseInterventions = interventionOptions[parseInt(chosen, 10) - 1];
+      console.log("chosen", chooseInterventions);
+      return newManipulations[chooseInterventions];
+    }),
     loadLLM: fromPromise(async () => {
       console.log("Loading LLM...");
       await chatCompletion([]);
@@ -69,7 +80,7 @@ const dmMachine = setup({
     // Check if key '0' was pressed (quit/end)
     isQuitKey: ({ context }) => context.keyPressed === '0',
     // Check if any manipulation key was pressed (1-4, q-r, a-f)
-    isManipulationKey: ({ context }) => {
+    isTextManipulationKey: ({ context }) => {
       const key = context.keyPressed;
       return key !== null && allManipulationKeys.includes(key);
     },
@@ -77,10 +88,14 @@ const dmMachine = setup({
     isYesKey: ({ context }) => context.keyPressed === 'y',
     isNoKey: ({ context }) => context.keyPressed === 'n',
 
-    // Check if the key is one of the "hahaha" manipulation keys (a, s, d, f)
-    isHypothesisKey: ({ context }) => {
+    // Check if the key is one of the manipulation keys
+    isAudioKey: ({ context }) => {
       const key = context.keyPressed;
-      return key !== null && hypothesisKeys.includes(key);
+      if (key === null) return false;
+      const interventionIndex = parseInt(key, 10);
+      if (isNaN(interventionIndex)) return false;
+
+      return context.interventions.length >= interventionIndex;
     }
   },
 
@@ -89,6 +104,7 @@ const dmMachine = setup({
   context: {
     lastResult: "",
     isFirstMessage: true,
+    interventions: [],
     pendingManipulation: null,
     keyPressed: null,
     userSpeechBuffer: [], // NEW: Initialize empty buffer
@@ -115,8 +131,22 @@ const dmMachine = setup({
       */
     ],
   },
-  initial: "SetupFurhat",
+  initial: "SetupExperiment",
   states: {
+    SetupExperiment: {
+      invoke: {
+        src: "chooseInterventionType",
+        onDone: {
+          target: "SetupFurhat",
+          actions: assign(({ event }) => {
+            console.log("Chosen interventions are", event);
+            return {
+              interventions: event.output
+            }
+          })
+        }
+      }
+    },
     SetupFurhat: {
       initial: "LoadLLM",
       states: {
@@ -294,7 +324,12 @@ const dmMachine = setup({
         },
         {
           // If manipulation key (1-4, q-r, a-f) pressed, add manipulation phrase
-          guard: "isManipulationKey",
+          guard: "isTextManipulationKey",
+          target: "AddManipulation",
+        },
+        {
+          // If manipulation key (1-4, q-r, a-f) pressed, add manipulation phrase
+          guard: "isAudioKey",
           target: "AddManipulation",
         },
         {
@@ -324,48 +359,47 @@ const dmMachine = setup({
       entry: assign(({ context }) => {
         // The following if statement checks if the key pressed is one of the hypothesis manipulation keys (1-4, q-r, a-f). If so, it queues an audio manipulation. 
         // Otherwise, it adds a text manipulation phrase for guidance keys (z-v, n, b).
-        if (hypothesisKeys.includes(context.keyPressed || '')) { 
-          const audioUrl = audioFiles[context.keyPressed || ''];
+        const manipulationIndex = parseInt(context.keyPressed || '', 10);
+        const manipulation = isNaN(manipulationIndex) ? manipulations[context.keyPressed || ''] : context.interventions[manipulationIndex - 1];
+        if (manipulation.audioUri) {
           const textForHistory = `[Audio manipulation: ${context.keyPressed}]`;
           
-          console.log(`Queuing audio: ${audioUrl}`);
+          console.log(`Queuing audio: ${manipulation.audioUri}`);
 
           return {
             messages: [
               ...context.messages,
               { role: "assistant" as const, content: textForHistory }
             ],
-            pendingManipulation: audioUrl,
+            pendingManipulation: manipulation.audioUri,
           };
-
         } else {
-
-        const phrase = manipulations[context.keyPressed || ''];
-        console.log(`Adding manipulation phrase: ${phrase}`);
-        // Add the manipulation phrase as an assistant message
-        return {
-          messages: [
-            ...context.messages,
-            { role: "assistant" as const, content: phrase }
-          ],
-          pendingManipulation: phrase,
-        };
-      }
-    },
-  ),
+          const phrase = manipulation.text;
+          if (phrase === undefined) {
+            throw Error("Could not find manipulation");
+          }
+          console.log(`Adding manipulation phrase: ${phrase}`);
+          // Add the manipulation phrase as an assistant message
+          return {
+            messages: [
+              ...context.messages,
+              { role: "assistant" as const, content: phrase }
+            ],
+            pendingManipulation: phrase,
+          };
+        }
+      }),
       always: [
         {
           // If it's a hypothesis key, go to SpeakManipulationAudio state
-          guard: "isHypothesisKey",
+          guard: "isAudioKey",
           target: "SpeakManipulationAudio",
         },
-       {
+        {
           // Otherwise, go to SpeakManipulation state
           target: "SpeakManipulation",
         }, 
-        
       ], // After adding manipulation, go speak it
-
     },
 
     
@@ -394,7 +428,7 @@ const dmMachine = setup({
 
   
 
-    // This is the state that will be triggered if the manipulation is an audio file (hahaha interventions)
+    
     SpeakManipulationAudio:{
       invoke: {
         src: "fhSpeakAudio", // Changed from "fhSpeak" to "fhSpeakAudio"
