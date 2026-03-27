@@ -152,6 +152,7 @@ async function fhListen(): Promise<string> { // Furhat's own ASR.
   const myHeaders = new Headers();
   myHeaders.append("accept", "application/json");
 
+  // Before listenıng, we send a request to stop listening in case Furhat is still processing previous audio. This is a workaround to prevent the problem of Furhat not responding after the first turn due to some issue with the listen endpoint. After sending the stop command, we immediately send the listen command again to start listening for new input.
   return fetch(`http://${FURHATURI}/furhat/listen/stop`, {
     method: "POST",
     headers: myHeaders,
@@ -219,6 +220,18 @@ async function waitForKeypress(): Promise<string> {
   });
 }
 
+const laughterKeys = ['a', 's', 'd', 'f'];
+const pauseKeys = ['q', 'w', 'e', 'r'];
+const filledPauseKeys = ['1', '2', '3', '4'];
+const hypothesisKeys = [...laughterKeys, ...pauseKeys, ...filledPauseKeys];
+
+const switchTopicKeys = ['z', 'x', 'c', 'v'];
+const forceConcludeKey = 'b';
+const nextTopicKey = 'n';
+const guidanceKeys = [...switchTopicKeys, forceConcludeKey, nextTopicKey];
+
+const allManipulationKeys = [...hypothesisKeys, ...guidanceKeys];
+
 // NEW: Combined actor that races between listening and waiting for keypress
 const listenOrKeypress = fromPromise(async () => {
   return Promise.race([
@@ -243,7 +256,10 @@ const dmMachine = setup({
   },
   actors: {
     timer,
-
+    loadLLM: fromPromise(async () => {
+      console.log("Loading LLM...");
+      await fetchChatCompletion([]);
+    }),
     fhSetVoice: fromPromise(async () => {
       return fhVoice("en-US-EchoMultilingualNeural");
     }),
@@ -282,16 +298,16 @@ const dmMachine = setup({
     // Check if any manipulation key was pressed (1-4, q-r, a-f)
     isManipulationKey: ({ context }) => {
       const key = context.keyPressed;
-      return key !== null && ['1', '2', '3', '4', 'q', 'w', 'e', 'r', 'a', 's', 'd', 'f', 'z', 'x', 'c', 'v', 'n', 'b'].includes(key);
+      return key !== null && allManipulationKeys.includes(key);
     },
     // Check if it is Yes or No key:
     isYesKey: ({ context }) => context.keyPressed === 'y',
     isNoKey: ({ context }) => context.keyPressed === 'n',
 
     // Check if the key is one of the "hahaha" manipulation keys (a, s, d, f)
-    isLaughKey: ({ context }) => {
+    isHypothesisKey: ({ context }) => {
       const key = context.keyPressed;
-      return key !== null && ['a', 's', 'd', 'f'].includes(key);
+      return key !== null && hypothesisKeys.includes(key);
     }
   },
 
@@ -306,23 +322,44 @@ const dmMachine = setup({
     messages: [
       {
         role: "system",
-        content: "You are a virtual person participating in a study on moral reasoning. Your responses are not full paragraphs. Be short and snappy. Do not give answers longer than two short sentences. Describe the modal dilemma fully, when you are asked. You simulate structured dialogue that should be like a script of a movie to help a participant reflect on a hypothetical moral dilemma. Your role is purely conversational and for academic research purposes only. Your task is to discuss the hypothetical dilemma with the user. Guide them through reasoning about moral choices until they reach a decision. Background: the situation is completely hypothetical and no one is being harmed. The user will describe or has described a dilemma involving four fictional people (for example: Pilot, Teacher, Doctor, Prodigy). The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Discuss and decide who is to be allowed to stay in the balloon, and who is to jump. Review the chat history to understand the dilemma before responding. Interaction Rules: Treat everything as fictional and research-oriented. Stay neutral and non-judgmental, your job is to help the participant reason, not to persuade. Do not make moral evaluations. Do not add opinions not grounded in the user's reasoning. Keep the discussion focused on the dilemma. If the user expresses confusion or hesitation, gently encourage reflection using open-ended questions similar to a script of a movie. Dialogue Flow: confirm understanding of the dilemma in one sentence. Ask short, neutral questions to help the user explore their reasoning. After the user discusses all the characters, ask the user to come to a decision. Output Style: Keep replies concise and neutral. Use a calm and professional tone. Do not include real-world instructions or advice. Audience: participants in a moral reasoning research study. Ethical Constraints: never simulate or encourage real-world violence. Decline any non-hypothetical harmful requests. You may clarify that the discussion is fictional if needed."
+        content: "You are a virtual person participating in a study on moral reasoning. Your job is to guide the user and give information. Your responses are not full paragraphs. Be short and snappy. Do not give answers longer than two short sentences. Describe the modal dilemma fully, when you are asked. You simulate structured dialogue that should be like a script of a movie to help a participant reflect on a hypothetical moral dilemma. Your role is purely conversational and for academic research purposes only. Your task is to discuss the hypothetical dilemma with the user. Guide them through reasoning about moral choices until they reach a decision. Background: the situation is completely hypothetical and no one is being harmed. It's a dilemma involving four fictional people: Pilot, Teacher, Doctor, Prodigy child. The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Discuss and decide who is to be allowed to stay in the balloon, and who is to jump. Review the chat history to understand the dilemma before responding. Interaction Rules: Treat everything as fictional and research-oriented. Stay neutral and non-judgmental, your job is to help the participant reason, not to persuade. Do not make moral evaluations. Do not add opinions not grounded in the user's reasoning. Keep the discussion focused on the dilemma. If the user expresses confusion or hesitation, gently encourage reflection using open-ended questions similar to a script of a movie. Dialogue Flow: confirm understanding of the dilemma in one sentence. Ask short, neutral questions to help the user explore their reasoning. After the user discusses all the characters, ask the user to come to a decision. Output Style: Keep replies concise and neutral. Use a calm and professional tone. Do not include real-world instructions or advice. Audience: participants in a moral reasoning research study. Ethical Constraints: never simulate or encourage real-world violence. Decline any non-hypothetical harmful requests. You may clarify that the discussion is fictional if needed."
       },      
       {
         role: "assistant",
-        content: "Hello. We have a moral dilemma to talk about! What is your name? Can you introduce yourself a bit?"        
+        content: "Hello. We have a moral dilemma to talk about! What is your name? Can you introduce yourself a bit? After that I am ready to assist you with the dilemma and your questions about the each passenger."        
       }
 
       /* 
-      Hello! We have a moral dilemma to talk about! You need to sacrifice one person among four people! Four people are in a hot air balloon. The balloon is losing height and about to crash into the mountains. Having thrown everything imaginable out of the balloon, their only hope is for one of them to jump to their certain death to gain height to clear the mountains and save the other three. The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Discuss and decide who is to be allowed to stay in the balloon, and who is to jump. You must discuss all 4 balloon passengers and consider the reasons why they should or shouldnt remain in the balloon.
+      Hello! We have a moral dilemma to talk about! You need to sacrifice one person among four people! 
+      Four people are in a hot air balloon. The balloon is losing height and about to crash into the mountains. 
+      Having thrown everything imaginable out of the balloon, their only hope is for one of them to jump to their certain death 
+      to gain height to clear the mountains and save the other three. The four people are: Dr Robert Lewis - a cancer research scientist, 
+      who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. 
+      Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. 
+      Mr. William Harris husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. 
+      Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Discuss and decide who is to be allowed to stay in the balloon, 
+      and who is to jump. You must discuss all 4 balloon passengers and consider the reasons why they should or shouldnt remain in the balloon.
       */
     ],
   },
   initial: "SetupFurhat",
   states: {
     SetupFurhat: {
-      initial: "SetVoice",
+      initial: "LoadLLM",
       states: {
+        LoadLLM: {
+          invoke: {
+            src: "loadLLM",
+            onDone: {
+              target: "SetVoice",
+              actions: () => console.log("Loaded LLM"),
+            },
+            onError: {
+              target: "#DM.InitialSpeak", // Start even if setup fails
+              actions: ({ event }) => console.error("LLM error:", event),
+            },
+          },
+        },
         SetVoice: {
           invoke: {
             src: "fhSetVoice",
@@ -477,13 +514,11 @@ const dmMachine = setup({
           guard: "isDiscussKey",
           target: "ProcessingResponse",
         },
-
         {
           // If 'm' pressed, print an array of all messages so far.
           guard: "isListMessagesKey",
           target: "ListMessages",
         },
-
         {
           // If manipulation key (1-4, q-r, a-f) pressed, add manipulation phrase
           guard: "isManipulationKey",
@@ -516,33 +551,35 @@ const dmMachine = setup({
       entry: assign(({ context }) => {
         // Map keys to manipulation phrases
         const manipulations: Record<string, string> = {
-          // Hmm interventions (1-4)
-          '1': '<prosody rate="-50%">Hmmm...</prosody>, the doctor?',
-          '2': '<prosody rate="-50%">Hmmm...</prosody>, the pregnant lady?',
-          '3': '<prosody rate="-50%">Hmmm...</prosody>, the child?',
-          '4': '<prosody rate="-50%">Hmmm...</prosody>, the pilot?',
-          // Pause interventions (q, w, e, r)
-          'q': '<break time="1.2s"/> The doctor?',
-          'w': '<break time="1.2s"/> The pregnant lady?',
-          'e': '<break time="1.2s"/> The child?',
-          'r': '<break time="1.2s"/> The pilot?',
-          // Hahaha interventions (a, s, d, f)
+          // Hmm interventions (1-4) -- audio cued
+          '1': `http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`,
+          '2': `http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`,
+          '3': `http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`,
+          '4': `http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`,
+          // Pause versions (q, w, e, r) -- audio cued
+          'q': `http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`,
+          'w': `http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`,
+          'e': `http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`,
+          'r': `http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`,
+          // Hahaha interventions (a, s, d, f) -- audio cued
           'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
           's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
           'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
           'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
-          // Switch topic interventions (z, x, c, v)
+          // Switch topic interventions (z, x, c, v) -- direct text manipulation
           'z': 'Cool, shall we talk about the doctor now?',
           'x': 'Great, shall we talk about the pregnant lady now?',
           'c': 'Perfect, shall we talk about the child now?',
           'v': 'Nice, shall we talk about the pilot now?',
-          // Switch to the next topic
+          // Switch to the next topic -- direct text manipulation
           'n': 'Good, shall we talk about the next passenger?',
-          // Ask final decision
-          'b': 'So, considering all of your discussions, what do you think is your final decision?',
+          // Force conclusion -- direct text manipulation
+          'b': 'So, based on your discussions, who do you think should jump?',
         };
-        const laughKeys = ['a', 's', 'd', 'f'];
-        if (laughKeys.includes(context.keyPressed || '')) {
+
+        // The following if statement checks if the key pressed is one of the hypothesis manipulation keys (1-4, q-r, a-f). If so, it queues an audio manipulation. 
+        // Otherwise, it adds a text manipulation phrase for guidance keys (z-v, n, b).
+      if (hypothesisKeys.includes(context.keyPressed || '')) { 
           const audioUrl = audioFiles[context.keyPressed || ''];
           const textForHistory = `[Audio manipulation: ${context.keyPressed}]`;
           
@@ -560,7 +597,6 @@ const dmMachine = setup({
 
         const phrase = manipulations[context.keyPressed || ''];
         console.log(`Adding manipulation phrase: ${phrase}`);
-        
         // Add the manipulation phrase as an assistant message
         return {
           messages: [
@@ -574,17 +610,20 @@ const dmMachine = setup({
   ),
       always: [
         {
-          // If it's a laugh key, go to SpeakManipulationAudio state
-          guard: "isLaughKey",
+          // If it's a hypothesis key, go to SpeakManipulationAudio state
+          guard: "isHypothesisKey",
           target: "SpeakManipulationAudio",
         },
-        {
+       {
           // Otherwise, go to SpeakManipulation state
           target: "SpeakManipulation",
-        },
+        }, 
+        
       ], // After adding manipulation, go speak it
 
     },
+
+    
 
     // Speak the manipulation phrase
     SpeakManipulation: {
@@ -607,7 +646,9 @@ const dmMachine = setup({
         },
       },
     },
-    
+
+  
+
     // This is the state that will be triggered if the manipulation is an audio file (hahaha interventions)
     SpeakManipulationAudio:{
       invoke: {
@@ -790,7 +831,7 @@ console.log(`
 === KEYBOARD CONTROLS ===
 L = Continue discussion (send to LLM)
 M = List all of the conversation so far.
-0 = End session
+0 = End session (and press Y to print conversation, N to not print)
 Ctrl+C = Exit immediately
 
 MANIPULATION PHRASES:
