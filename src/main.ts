@@ -362,7 +362,7 @@ const dmMachine = setup({
         const manipulationIndex = parseInt(context.keyPressed || '', 10);
         const manipulation = isNaN(manipulationIndex) ? manipulations[context.keyPressed || ''] : context.interventions[manipulationIndex - 1];
         if (manipulation.audioUri) {
-          const textForHistory = `[Audio manipulation: ${context.keyPressed}]`;
+          const textForHistory = manipulation.transcription || `[Audio manipulation: ${manipulation.audioUri}]`;
           
           console.log(`Queuing audio: ${manipulation.audioUri}`);
 

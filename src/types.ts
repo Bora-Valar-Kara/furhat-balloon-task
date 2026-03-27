@@ -16,5 +16,6 @@ export interface DMContext { // Our regular DMContext types.
 
 export type Manipulation = {
   audioUri: string | undefined;
+  transcription: string | undefined;
   text: string | undefined;
 }

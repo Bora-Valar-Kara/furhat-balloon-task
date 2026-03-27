@@ -45,14 +45,16 @@ function text(text: string): Manipulation {
     // Create a text manipulation
     return {
         audioUri: undefined,
+        transcription: undefined,
         text
     }
 }
 
-function audioFile(filename: string): Manipulation {
+function audioFile(filename: string, transcription: string): Manipulation {
     // Create an audio file manipulation
     return {
         audioUri: filename,
+        transcription,
         text: undefined
     }
 }
@@ -74,24 +76,24 @@ export const allManipulationKeys = Object.keys(manipulations);
 export const newManipulations: Record<string, Manipulation[]> = {
     hmm: [
         // Hmm interventions (1-4) -- audio cued
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`, 'Hmm, the doctor?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`, 'Hmm, the pregnant lady?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`, 'Hmm, the child?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`, 'Hmm, the pilot?'),
     ],
     pause: [
         // Pause versions (q, w, e, r) -- audio cued
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`, '..., the doctor?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`, '..., the pregnant lady?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`, '..., the child?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`, '..., the pilot?'),
     ],
     laughter: [
         // Hahaha interventions (a, s, d, f) -- audio cued
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`, 'Hahaha, the doctor?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`, 'Hahaha, the pregnant lady?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`, 'Hahaha, the child?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`, 'Hahaha, the pilot?'),
     ]
 }
 
