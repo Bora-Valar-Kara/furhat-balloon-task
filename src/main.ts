@@ -644,6 +644,9 @@ N = Can we talk about the next passenger now?
 FORCE CONCLUDE:
 B = So, based on your discussions, who do you think should jump?
 
+FORCE EXPLANATION:
+P = Read out the full dilemma prompt
+
 ========================
 
 New thing for interruption problem: User speech is accumulated in a buffer. 
