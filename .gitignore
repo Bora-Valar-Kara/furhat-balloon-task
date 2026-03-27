@@ -12,7 +12,7 @@
 !.yarn/cache
 #.pnp.*
 .yarn/cache
-
+yarn.lock
 
 # This ignores any file that has been marked as *obsolete* in the package.json file. This is useful for ignoring files that are no longer needed or relevant to the project, while still keeping them in the repository for historical purposes.
 *obsolete*
