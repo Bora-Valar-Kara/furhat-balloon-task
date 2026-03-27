@@ -1,9 +1,12 @@
 import { setup, createActor, fromPromise, assign } from "xstate";
-import { Message, DMContext, Manipulation } from "./types";
-import { fakeFurhat, sanitizeUtterance } from "./furhat";
+import { Message, DMContext } from "./types";
+import { fakeFurhat, realFurhat, sanitizeUtterance } from "./furhat";
 import { fetchChatCompletion, fetchChatCompletionNoOllama } from "./ollama";
 import { waitForKeypress } from "./keypress";
 import { allManipulationKeys, newManipulations, manipulations, interventionTypes } from "./audio_manipulations";
+
+const MOCK_FURHAT = false;
+const MOCK_LLM = false;
 
 const timer = fromPromise(
   ({ input }: { input: { ms: number } }) =>
@@ -11,8 +14,8 @@ const timer = fromPromise(
 );
 
 //const chatCompletion = fetchChatCompletion;
-const chatCompletion = fetchChatCompletionNoOllama;
-const furhat = fakeFurhat;
+const chatCompletion = MOCK_LLM ? fetchChatCompletionNoOllama : fetchChatCompletion;
+const furhat = MOCK_FURHAT ? fakeFurhat : realFurhat;
 
 // NEW: Combined actor that races between listening and waiting for keypress
 const listenOrKeypress = fromPromise(async () => {
