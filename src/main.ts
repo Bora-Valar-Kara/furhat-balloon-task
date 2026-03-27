@@ -223,12 +223,13 @@ async function waitForKeypress(): Promise<string> {
 const laughterKeys = ['a', 's', 'd', 'f'];
 const pauseKeys = ['q', 'w', 'e', 'r'];
 const filledPauseKeys = ['1', '2', '3', '4'];
+const promptKey = 'p';
 const hypothesisKeys = [...laughterKeys, ...pauseKeys, ...filledPauseKeys];
 
 const switchTopicKeys = ['z', 'x', 'c', 'v'];
 const forceConcludeKey = 'b';
 const nextTopicKey = 'n';
-const guidanceKeys = [...switchTopicKeys, forceConcludeKey, nextTopicKey];
+const guidanceKeys = [...switchTopicKeys, forceConcludeKey, nextTopicKey, promptKey];
 
 const allManipulationKeys = [...hypothesisKeys, ...guidanceKeys];
 
@@ -575,6 +576,8 @@ const dmMachine = setup({
           'n': 'Good, shall we talk about the next passenger?',
           // Force conclusion -- direct text manipulation
           'b': 'So, based on your discussions, who do you think should jump?',
+          // Our explanation prompt about dilemma
+          'p': 'So, the moral dilemma and your task is to indicate which person you would choose to sacrifice in the following moral dilemma. I am starting to explain now: Four people are in a hot air balloon. The balloon is losing height and about to crash into the mountains. Having thrown everything imaginable out of the balloon, including food, sandbags and parachutes, their only hope is for one of them to jump to their certain death to give the balloon the extra height to clear the mountains and save the other three. The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris – husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Come to an agreement about who is to be allowed to stay in the balloon, and who is to jump. You must discuss all 4 balloon passengers and consider the reasons why they should or shouldnt remain in the balloon.',
         };
 
         // The following if statement checks if the key pressed is one of the hypothesis manipulation keys (1-4, q-r, a-f). If so, it queues an audio manipulation. 
@@ -864,6 +867,9 @@ N = Can we talk about the next passenger now?
 
 FORCE CONCLUDE:
 B = So, based on your discussions, who do you think should jump?
+
+FORCE EXPLANATION:
+P = Read out the full dilemma prompt
 
 ========================
 
