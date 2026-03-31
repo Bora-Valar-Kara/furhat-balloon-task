@@ -1,254 +1,29 @@
 import { setup, createActor, fromPromise, assign } from "xstate";
-import * as readline from 'readline';
-// Imports for server and file system (required for audio importing)
-import * as http from 'http';
-import * as fs from 'fs';
-import * as path from 'path';
+import { Message, DMContext } from "./types";
+import { fakeFurhat, realFurhat, sanitizeUtterance } from "./furhat";
+import { fetchChatCompletion, fetchChatCompletionNoOllama } from "./ollama";
+import { waitForKeypress } from "./keypress";
+import { allManipulationKeys, newManipulations, manipulations, interventionTypes } from "./audio_manipulations";
 
-import { networkInterfaces } from 'os';
-
-
-// Automatically find your computer's IP
-function findIPContaining(value: string) {
-  for (const [name, ifaceArray] of Object.entries(networkInterfaces())) {
-    if (!ifaceArray) continue;
-    for (const iface of ifaceArray) {
-      if (iface.address.indexOf(value) === 0) {
-        return iface.address;
-      }
-    }
-  }
-}
-
-const OVERRIDE_IP = ""; // If automatic detection doesn't work, set here. Run ifconfig | grep 192 in terminal to find it. Or ifconfig | grep 10
-
-const PC_IP = OVERRIDE_IP || findIPContaining("192") || findIPContaining("10."); // CHANGE THIS TO YOUR COMPUTER'S LOCAL IP ADDRESS (the one that Furhat can access through the network). Run ifconfig | grep 192 on terminal to find it. It usually starts with 192.168.1.xxx or 10.0.0.xxx
-const FURHATURI = "192.168.1.11:54321";
-const OLLAMA_API_URL = "http://localhost:11434/api/chat";
-const firstMessageWaitTimeMs = 0; // 0 second for the first message
-
-// >>> HANDLING RECORDED AUDIO IMPORTS /BEGIN <<<
-const AUDIO_PORT = 8000;
-const AUDIO_DIR = path.join(__dirname, 'audio');
-
-http.createServer((req, res) => {
-  const filePath = path.join(AUDIO_DIR, req.url || '');
-  
-  if (fs.existsSync(filePath) && filePath.endsWith('.wav')) {
-    res.writeHead(200, { 'Content-Type': 'audio/wav' });
-    fs.createReadStream(filePath).pipe(res);
-  } else {
-    res.writeHead(404);
-    res.end('File not found');
-  }
-}).listen(AUDIO_PORT, () => {
-  console.log(`Audio server running at http://${PC_IP}:${AUDIO_PORT}`);
-});
-
-const audioFiles: Record<string, string> = {
-  '1': `http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`,
-  '2': `http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`,
-  '3': `http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`,
-  '4': `http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`,
-
-  'q': `http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`,
-  'w': `http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`,
-  'e': `http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`,
-  'r': `http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`,
-
-  'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
-  's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
-  'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
-  'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
-};
-// >>> HANDLING RECORDED AUDIO IMPORTS /END <<<
-
-// Types
-type Message = { // LLM dialogue structure. The system will constantly change between these roles at each turn.
-  role: "assistant" | "user" | "system"; // system is a sole actor. Assistant is the LLM. User is us.
-  content: string;
-};
-
-interface DMContext { // Our regular DMContext types.
-  lastResult: string;
-  messages: Message[];
-  isFirstMessage: boolean; // If the message is the first message.
-  pendingManipulation: string | null; // Stores the manipulation phrase to add to next assistant turn
-  keyPressed: string | null; // Stores which key was pressed
-  userSpeechBuffer: string[]; // NEW: Accumulates user utterances before processing
-}
-
-// Setup readline interface for keyboard input in Node.js
-readline.emitKeypressEvents(process.stdin);
-if (process.stdin.isTTY) {
-  process.stdin.setRawMode(true);
-}
-
-// Furhat API functions
-async function fhVoice(name: string) { // fh functions are fetched from Furhat's URI. They are ready-made functions.
-  const myHeaders = new Headers();
-  myHeaders.append("accept", "application/json");
-  const encName = encodeURIComponent(name);
-  return fetch(`http://${FURHATURI}/furhat/voice?name=${encName}`, {
-    method: "POST",
-    headers: myHeaders,
-    body: "",
-  });
-}
-
-async function fhSay(text: string, isFirstMessage: boolean = false) { 
-  const myHeaders = new Headers();
-  myHeaders.append("accept", "application/json");
-  const encText = encodeURIComponent(text);
-  await fetch(`http://${FURHATURI}/furhat/say?text=${encText}&blocking=true`, {
-    method: "POST",
-    headers: myHeaders,
-    body: "",
-  });
-  
-  // 6 second delay for first message (long introduction), 1 second for others
-  const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
-  await new Promise(resolve => setTimeout(resolve, delay));
-}
+const MOCK_FURHAT = false;
+const MOCK_LLM = false;
 
 const timer = fromPromise(
   ({ input }: { input: { ms: number } }) =>
     new Promise((resolve) => setTimeout(resolve, input.ms))
 );
 
-async function fhSayAudio(audioUrl: string, isFirstMessage: boolean = false) {
-  const myHeaders = new Headers();
-  myHeaders.append("accept", "application/json");
-  const encUrl = encodeURIComponent(audioUrl);
-  
-  // Remove the 'text=' and use 'url=' instead
-  await fetch(`http://${FURHATURI}/furhat/say?url=${encUrl}&blocking=true&lipsync=true`, {
-    method: "POST",
-    headers: myHeaders,
-    body: "",
-  });
-  
-  const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
-  await new Promise(resolve => setTimeout(resolve, delay));
-}
-
-async function fhAttendUser() { // This is about GAZE.
-  const myHeaders = new Headers();
-  myHeaders.append("accept", "application/json");
-  return fetch(`http://${FURHATURI}/furhat/attend?user=CLOSEST`, { // Look at documentation (https://docs.furhat.io/remote-api/) in the "Attend" section
-    /*
-    # Attend the user closest to the robot
-    furhat.attend(user="CLOSEST") 
-
-    There are other attend options in the doc.
-    */
-    method: "POST",
-    headers: myHeaders,
-    body: "",
-  });
-}
-
-async function fhListen(): Promise<string> { // Furhat's own ASR.
-  const myHeaders = new Headers();
-  myHeaders.append("accept", "application/json");
-
-  // Before listenıng, we send a request to stop listening in case Furhat is still processing previous audio. This is a workaround to prevent the problem of Furhat not responding after the first turn due to some issue with the listen endpoint. After sending the stop command, we immediately send the listen command again to start listening for new input.
-  return fetch(`http://${FURHATURI}/furhat/listen/stop`, {
-    method: "POST",
-    headers: myHeaders,
-  }).then(() => {
-    console.log("(Re)starting to listen...");
-    return fetch(`http://${FURHATURI}/furhat/listen`, {
-      method: "GET",
-      headers: myHeaders,
-    });
-  })
-    .then((response) => response.body)
-    .then((body) => body!.getReader().read())
-    .then((reader) => reader.value)
-    .then((value) => JSON.parse(new TextDecoder().decode(value!)).message);
-}
-
-// Ollama API function
-async function fetchChatCompletion(messages: Message[]): Promise<string> {
-  console.log("Calling Ollama with messages:", messages);
-  
-  try {
-    const response = await fetch(OLLAMA_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "llava:13b",
-        messages: messages,
-        stream: false,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Ollama API error:", response.status, errorText);
-      throw new Error(`Ollama API error: ${response.status}`);
-    }
-    
-    const data = await response.json();
-    console.log("Ollama response:", data);
-    
-    const assistantMessage = data.message.content;
-    return assistantMessage;
-  } catch (error) {
-    console.error("Error calling Ollama:", error);
-    return "Error while connecting to the language model. Probably ssh tunnel is not active.";
-  }
-}
-
-// Keyboard input listener for Node.js - waits for a single keypress and returns the key
-async function waitForKeypress(): Promise<string> {
-  return new Promise((resolve) => {
-    const handler = (str: string, key: any) => {
-      // Handle Ctrl+C to exit gracefully
-      if (key.ctrl && key.name === 'c') {
-        console.log('\nExiting...');
-        process.exit(0);
-      }
-      
-      resolve(key.name.toLowerCase());
-    };
-    process.stdin.removeAllListeners('keypress');
-    process.stdin.once('keypress', handler);
-  });
-}
-
-const laughterKeys = ['a', 's', 'd', 'f'];
-const pauseKeys = ['q', 'w', 'e', 'r'];
-const filledPauseKeys = ['1', '2', '3', '4'];
-const promptKey = 'p';
-const hypothesisKeys = [...laughterKeys, ...pauseKeys, ...filledPauseKeys];
-
-const switchTopicKeys = ['z', 'x', 'c', 'v'];
-const forceConcludeKey = 'b';
-const nextTopicKey = 'n';
-const guidanceKeys = [...switchTopicKeys, forceConcludeKey, nextTopicKey, promptKey];
-
-const allManipulationKeys = [...hypothesisKeys, ...guidanceKeys];
+//const chatCompletion = fetchChatCompletion;
+const chatCompletion = MOCK_LLM ? fetchChatCompletionNoOllama : fetchChatCompletion;
+const furhat = MOCK_FURHAT ? fakeFurhat : realFurhat;
 
 // NEW: Combined actor that races between listening and waiting for keypress
 const listenOrKeypress = fromPromise(async () => {
   return Promise.race([
-    fhListen().then(result => ({ type: 'speech' as const, data: result })),
+    furhat.listen().then(result => ({ type: 'speech' as const, data: result })),
     waitForKeypress().then(result => ({ type: 'keypress' as const, data: result }))
   ]);
 });
-
-// NEW: Helper function to filter out NOMATCH and replace with "..."
-function sanitizeUtterance(utterance: string): string {
-  // Check if the utterance contains "NOMATCH" (case-insensitive)
-  if (utterance.toLowerCase().includes('nomatch')) {
-    return '...';
-  }
-  return utterance;
-}
 
 // State machine
 const dmMachine = setup({
@@ -257,28 +32,39 @@ const dmMachine = setup({
   },
   actors: {
     timer,
+    chooseInterventionType: fromPromise(async () => {
+      console.log("Choose interventions:");
+      const interventionOptions = interventionTypes();
+      for (let i = 0; i < interventionOptions.length; i++) {
+        console.log(`${i + 1}: ${interventionOptions[i]}`);
+      }
+      const chosen = await waitForKeypress();
+      const chooseInterventions = interventionOptions[parseInt(chosen, 10) - 1];
+      console.log("chosen", chooseInterventions);
+      return newManipulations[chooseInterventions];
+    }),
     loadLLM: fromPromise(async () => {
       console.log("Loading LLM...");
-      await fetchChatCompletion([]);
+      await chatCompletion([]);
     }),
     fhSetVoice: fromPromise(async () => {
-      return fhVoice("en-US-EchoMultilingualNeural");
+      return furhat.setVoice("en-US-EchoMultilingualNeural");
     }),
     fhAttend: fromPromise(async () => {
-      return fhAttendUser();
+      return furhat.attendUser();
     }),
     fhSpeak: fromPromise(async ({ input }: { input: { text: string; isFirstMessage: boolean } }) => {
-      return fhSay(input.text, input.isFirstMessage);
+      return furhat.say(input.text, input.isFirstMessage);
     }),
     fhSpeakAudio: fromPromise(async ({ input }: { input: { audioUrl: string; isFirstMessage: boolean } }) => {
-      return fhSayAudio(input.audioUrl, input.isFirstMessage);
+      return furhat.sayAudio(input.audioUrl, input.isFirstMessage);
     }),
     fhListen: fromPromise(async () => {
-      return fhListen();
+      return furhat.listen();
     }),
     chatCompletion: fromPromise(
       async ({ input }: { input: { messages: Message[] } }) => {
-        const response = await fetchChatCompletion(input.messages);
+        const response = await chatCompletion(input.messages);
         return response;
       }
     ),
@@ -297,7 +83,7 @@ const dmMachine = setup({
     // Check if key '0' was pressed (quit/end)
     isQuitKey: ({ context }) => context.keyPressed === '0',
     // Check if any manipulation key was pressed (1-4, q-r, a-f)
-    isManipulationKey: ({ context }) => {
+    isTextManipulationKey: ({ context }) => {
       const key = context.keyPressed;
       return key !== null && allManipulationKeys.includes(key);
     },
@@ -305,10 +91,14 @@ const dmMachine = setup({
     isYesKey: ({ context }) => context.keyPressed === 'y',
     isNoKey: ({ context }) => context.keyPressed === 'n',
 
-    // Check if the key is one of the "hahaha" manipulation keys (a, s, d, f)
-    isHypothesisKey: ({ context }) => {
+    // Check if the key is one of the manipulation keys
+    isAudioKey: ({ context }) => {
       const key = context.keyPressed;
-      return key !== null && hypothesisKeys.includes(key);
+      if (key === null) return false;
+      const interventionIndex = parseInt(key, 10);
+      if (isNaN(interventionIndex)) return false;
+
+      return context.interventions.length >= interventionIndex;
     }
   },
 
@@ -317,6 +107,7 @@ const dmMachine = setup({
   context: {
     lastResult: "",
     isFirstMessage: true,
+    interventions: [],
     pendingManipulation: null,
     keyPressed: null,
     userSpeechBuffer: [], // NEW: Initialize empty buffer
@@ -343,8 +134,22 @@ const dmMachine = setup({
       */
     ],
   },
-  initial: "SetupFurhat",
+  initial: "SetupExperiment",
   states: {
+    SetupExperiment: {
+      invoke: {
+        src: "chooseInterventionType",
+        onDone: {
+          target: "SetupFurhat",
+          actions: assign(({ event }) => {
+            console.log("Chosen interventions are", event);
+            return {
+              interventions: event.output
+            }
+          })
+        }
+      }
+    },
     SetupFurhat: {
       initial: "LoadLLM",
       states: {
@@ -522,7 +327,12 @@ const dmMachine = setup({
         },
         {
           // If manipulation key (1-4, q-r, a-f) pressed, add manipulation phrase
-          guard: "isManipulationKey",
+          guard: "isTextManipulationKey",
+          target: "AddManipulation",
+        },
+        {
+          // If manipulation key (1-4, q-r, a-f) pressed, add manipulation phrase
+          guard: "isAudioKey",
           target: "AddManipulation",
         },
         {
@@ -550,94 +360,49 @@ const dmMachine = setup({
     // Add manipulation phrase based on key pressed
     AddManipulation: {
       entry: assign(({ context }) => {
-        // Map keys to manipulation phrases
-        const manipulations: Record<string, string> = {
-          // Hmm interventions (1-4) -- audio cued
-          '1': `http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`,
-          '2': `http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`,
-          '3': `http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`,
-          '4': `http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`,
-          // Pause versions (q, w, e, r) -- audio cued
-          'q': `http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`,
-          'w': `http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`,
-          'e': `http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`,
-          'r': `http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`,
-          // Hahaha interventions (a, s, d, f) -- audio cued
-          'a': `http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`,
-          's': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`,
-          'd': `http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`,
-          'f': `http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`,
-          // Switch topic interventions (z, x, c, v) -- direct text manipulation
-          'z': 'Cool, shall we talk about the doctor now?',
-          'x': 'Great, shall we talk about the pregnant lady now?',
-          'c': 'Perfect, shall we talk about the child now?',
-          'v': 'Nice, shall we talk about the pilot now?',
-          // Switch to the next topic -- direct text manipulation
-          'n': 'Good, shall we talk about the next passenger?',
-          // Force conclusion -- direct text manipulation
-          'b': 'So, based on your discussions, who do you think should jump?',
-          // Our explanation prompt about dilemma
-          'p': 'So, the moral dilemma and your task is to indicate which person you would choose to sacrifice in the following moral dilemma. I am starting to explain now: Four people are in a hot air balloon. The balloon is losing height and about to crash into the mountains. Having thrown everything imaginable out of the balloon, including food, sandbags and parachutes, their only hope is for one of them to jump to their certain death to give the balloon the extra height to clear the mountains and save the other three. The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris – husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Come to an agreement about who is to be allowed to stay in the balloon, and who is to jump. You must discuss all 4 balloon passengers and consider the reasons why they should or shouldnt remain in the balloon.',
-        };
-
         // The following if statement checks if the key pressed is one of the hypothesis manipulation keys (1-4, q-r, a-f). If so, it queues an audio manipulation. 
         // Otherwise, it adds a text manipulation phrase for guidance keys (z-v, n, b).
-      if (hypothesisKeys.includes(context.keyPressed || '')) { 
-          const audioUrl = audioFiles[context.keyPressed || ''];
-          const audioTranscripts: Record<string, string> = {
-            '1': 'Hmm, the doctor?',
-            '2': 'Hmm, the pregnant lady?',
-            '3': 'Hmm, the child?',
-            '4': 'Hmm, the pilot?',
-            'q': '..., the doctor?',
-            'w': '..., the pregnant lady?',
-            'e': '..., the child?',
-            'r': '..., the pilot?',
-            'a': 'Hahaha, the doctor?',
-            's': 'Hahaha, the pregnant lady?',
-            'd': 'Hahaha, the child?',
-            'f': 'Hahaha, the pilot?',
-          };
-          const textForHistory = audioTranscripts[context.keyPressed || ''] ?? `[Audio manipulation: ${context.keyPressed}]`;
+        const manipulationIndex = parseInt(context.keyPressed || '', 10);
+        const manipulation = isNaN(manipulationIndex) ? manipulations[context.keyPressed || ''] : context.interventions[manipulationIndex - 1];
+        if (manipulation.audioUri) {
+          const textForHistory = manipulation.transcription || `[Audio manipulation: ${manipulation.audioUri}]`;
           
-          console.log(`Queuing audio: ${audioUrl}`);
-          
+          console.log(`Queuing audio: ${manipulation.audioUri}`);
+
           return {
             messages: [
               ...context.messages,
               { role: "assistant" as const, content: textForHistory }
             ],
-            pendingManipulation: audioUrl,
+            pendingManipulation: manipulation.audioUri,
           };
-
         } else {
-
-        const phrase = manipulations[context.keyPressed || ''];
-        console.log(`Adding manipulation phrase: ${phrase}`);
-        // Add the manipulation phrase as an assistant message
-        return {
-          messages: [
-            ...context.messages,
-            { role: "assistant" as const, content: phrase }
-          ],
-          pendingManipulation: phrase,
-        };
-      }
-    },
-  ),
+          const phrase = manipulation.text;
+          if (phrase === undefined) {
+            throw Error("Could not find manipulation");
+          }
+          console.log(`Adding manipulation phrase: ${phrase}`);
+          // Add the manipulation phrase as an assistant message
+          return {
+            messages: [
+              ...context.messages,
+              { role: "assistant" as const, content: phrase }
+            ],
+            pendingManipulation: phrase,
+          };
+        }
+      }),
       always: [
         {
           // If it's a hypothesis key, go to SpeakManipulationAudio state
-          guard: "isHypothesisKey",
+          guard: "isAudioKey",
           target: "SpeakManipulationAudio",
         },
-       {
+        {
           // Otherwise, go to SpeakManipulation state
           target: "SpeakManipulation",
         }, 
-        
       ], // After adding manipulation, go speak it
-
     },
 
     
@@ -666,7 +431,7 @@ const dmMachine = setup({
 
   
 
-    // This is the state that will be triggered if the manipulation is an audio file (hahaha interventions)
+    
     SpeakManipulationAudio:{
       invoke: {
         src: "fhSpeakAudio", // Changed from "fhSpeak" to "fhSpeakAudio"
