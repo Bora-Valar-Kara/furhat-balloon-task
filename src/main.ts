@@ -118,7 +118,7 @@ const dmMachine = setup({
       },      
       {
         role: "assistant",
-        content: "Hello. We have a moral dilemma to talk about! What is your name? Can you introduce yourself a bit? After that I am ready to assist you with the dilemma and your questions about the each passenger."        
+        content: "Hello. We have a moral dilemma to talk about! Can you introduce yourself a bit? After that I am ready to assist you with the dilemma and your questions about the each passenger."        
       }
 
       /* 
@@ -616,25 +616,11 @@ M = List all of the conversation so far.
 0 = End session (and press Y to print conversation, N to not print)
 Ctrl+C = Exit immediately
 
-MANIPULATION PHRASES:
-
-Hmm versions:
-1 = Hmm, the Doctor?
-2 = Hmm, the pregnant lady?
-3 = Hmm, the child?
-4 = Hmm, the pilot?
-
-Pause versions:
-Q = (pause) The Doctor?
-W = (pause) The pregnant lady?
-E = (pause) The child?
-R = (pause) The pilot?
-
-Hahaha versions:
-A = Hahaha, the Doctor?
-S = Hahaha, the pregnant lady?
-D = Hahaha, the child?
-F = Hahaha, the pilot?
+Interventions:
+1 = Hmm / (pause) / hahaha, the Doctor?
+2 = Hmm / (pause) / hahaha, the pregnant lady?
+3 = Hmm / (pause) / hahaha, the child?
+4 = Hmm / (pause) / hahaha, the pilot?
 
 FORCE CHANGE TOPIC:
 Z = Can we talk about the doctor now? 
@@ -650,10 +636,4 @@ B = So, based on your discussions, who do you think should jump?
 FORCE EXPLANATION:
 P = Read out the full dilemma prompt
 
-========================
-
-New thing for interruption problem: User speech is accumulated in a buffer. 
-The system keeps listening until a key is pressed.
-When a key is pressed, all accumulated speech is combined and processed into our message array.
-NOMATCH utterances are replaced with "..." in the final output.
 `);
