@@ -62,39 +62,39 @@ function audioFile(filename: string, transcription: string): Manipulation {
 // Map keys to manipulation phrases
 export const manipulations: Record<string, Manipulation> = {
     // Switch topic interventions (z, x, c, v) -- direct text manipulation
-    'z': text('Cool, shall we talk about the doctor now?'),
-    'x': text('Great, shall we talk about the pregnant lady now?'),
-    'c': text('Perfect, shall we talk about the child now?'),
-    'v': text('Nice, shall we talk about the pilot now?'),
+    'z': text('That is great. Shall we talk about the doctor now?'),
+    'x': text('That is great. Shall we talk about the teacher now?'),
+    'c': text('That is great. Shall we talk about the prodigy child now?'),
+    'v': text('That is great. Shall we talk about the pilot now?'),
     // Switch to the next topic -- direct text manipulation
     'n': text('Good, shall we talk about the next passenger?'),
     // Force conclusion -- direct text manipulation
     'b': text('So, based on your discussions, who do you think should jump?'),
-    'p': text('So, the moral dilemma and your task is to indicate which person you would choose to sacrifice in the following moral dilemma. I am starting to explain now: Four people are in a hot air balloon. The balloon is losing height and about to crash into the mountains. Having thrown everything imaginable out of the balloon, including food, sandbags and parachutes, their only hope is for one of them to jump to their certain death to give the balloon the extra height to clear the mountains and save the other three. The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris – husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Come to an agreement about who is to be allowed to stay in the balloon, and who is to jump. You must discuss all 4 balloon passengers and consider the reasons why they should or shouldnt remain in the balloon.'),
+    'p': text('So, the moral dilemma and your task is to indicate which person you would choose to sacrifice in the following moral dilemma. I am starting to explain now: Four people are in a hot air balloon. The balloon is losing height and about to crash into the mountains. Having thrown everything imaginable out of the balloon, including food and sandbags, their only hope is for one of them to jump to their certain death to give the balloon the extra height to clear the mountains and save the other three. The four people are: Dr Robert Lewis - a cancer research scientist, who believes he is about to discover a cure for most common types of cancer. He is a good friend of Susanne and William. Mrs. Susanne Harris - a primary school teacher. She is over the moon because she is 7 months pregnant with her second child. Mr. William Harris – husband of Susanne, who he loves very much. He is the pilot of the balloon and the only one on board with balloon flying experience. Miss Heather Sloan - a 9-year-old music prodigy, considered by many to be a twenty-first century Mozart. Come to an agreement about who is to be allowed to stay in the balloon, and who is to jump. You must discuss all 4 balloon passengers and consider the reasons why they should or shouldnt remain in the balloon.'),
 };
 export const allManipulationKeys = Object.keys(manipulations);
 
 export const newManipulations: Record<string, Manipulation[]> = {
     hmm: [
         // Hmm interventions (1-4) -- audio cued
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_doctor.wav`, 'Hmm, the doctor?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pregnant.wav`, 'Hmm, the pregnant lady?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_child.wav`, 'Hmm, the child?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pilot.wav`, 'Hmm, the pilot?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_doctor2.wav`, 'Hmm, the doctor?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_teacher.wav`, 'Hmm, the teacher?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_prodigy.wav`, 'Hmm, the prodigy?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hmm_pilot2.wav`, 'Hmm, the pilot?'),
     ],
     pause: [
-        // Pause versions (q, w, e, r) -- audio cued
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_doctor.wav`, '..., the doctor?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pregnant.wav`, '..., the pregnant lady?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_child.wav`, '..., the child?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pilot.wav`, '..., the pilot?'),
+        // Pause versions (1-4) -- audio cued
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_doctor2.wav`, '..., the doctor?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_teacher.wav`, '..., the teacher?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_prodigy.wav`, '..., the prodigy?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/pause_pilot2.wav`, '..., the pilot?'),
     ],
     laughter: [
-        // Hahaha interventions (a, s, d, f) -- audio cued
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor.wav`, 'Hahaha, the doctor?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pregnant.wav`, 'Hahaha, the pregnant lady?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_child.wav`, 'Hahaha, the child?'),
-        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot.wav`, 'Hahaha, the pilot?'),
+        // Hahaha interventions (1-4) -- audio cued
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_doctor2.wav`, 'Hahaha, the doctor?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_teacher.wav`, 'Hahaha, the teacher?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_prodigy.wav`, 'Hahaha, the prodigy?'),
+        audioFile(`http://${PC_IP}:${AUDIO_PORT}/hahaha_pilot2.wav`, 'Hahaha, the pilot?'),
     ]
 }
 

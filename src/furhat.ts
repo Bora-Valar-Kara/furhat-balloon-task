@@ -49,11 +49,15 @@ export async function fhSay(text: string, isFirstMessage: boolean = false) {
   const myHeaders = new Headers();
   myHeaders.append("accept", "application/json");
   const encText = encodeURIComponent(text);
-  await fetch(`http://${FURHATURI}/furhat/say?text=${encText}&blocking=true`, {
-    method: "POST",
-    headers: myHeaders,
-    body: "",
-  });
+  try {
+    const result = await fetch(`http://${FURHATURI}/furhat/say?text=${encText}&blocking=true`, {
+      method: "POST",
+      headers: myHeaders,
+      body: "",
+    });
+  } catch (error) {
+    console.error("Error in fhSay:", error);
+  }
   
   // 6 second delay for first message (long introduction), 1 second for others
   const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;

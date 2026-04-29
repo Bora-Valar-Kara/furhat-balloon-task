@@ -2,6 +2,9 @@ import { Message } from "./types";
 
 const OLLAMA_API_URL = "http://localhost:11434/api/chat";
 
+const GROQ = "llama3-groq-tool-use:latest"; // GROQ model name
+const OLLAMA = "llava:13b"; // OLLAMA model name
+
 // Ollama API function
 export async function fetchChatCompletion(messages: Message[]): Promise<string> {
   console.log("Calling Ollama with messages:", messages);
@@ -13,7 +16,7 @@ export async function fetchChatCompletion(messages: Message[]): Promise<string> 
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llava:13b",
+        model: OLLAMA, // Choose between GROQ and OLLAMA here
         messages: messages,
         stream: false,
       }),
