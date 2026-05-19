@@ -1,10 +1,17 @@
 // Types
+export type Timestamp = {
+  start: Date;
+  end: Date;
+};
+
 export type Message = { // LLM dialogue structure. The system will constantly change between these roles at each turn.
   role: "assistant" | "user" | "system"; // system is a sole actor. Assistant is the LLM. User is us.
+  timestamp: Timestamp;
   content: string;
 };
 
 export interface DMContext { // Our regular DMContext types.
+  userStartSpeakingTime: Date | null;
   lastResult: string;
   messages: Message[];
   interventions: Manipulation[];

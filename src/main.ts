@@ -1,5 +1,5 @@
 import { setup, createActor, fromPromise, assign } from "xstate";
-import { Message, DMContext } from "./types";
+import { Message, DMContext, Timestamp } from "./types";
 import { fakeFurhat, realFurhat, sanitizeUtterance } from "./furhat";
 import { fetchChatCompletion, fetchChatCompletionNoOllama } from "./ollama";
 import { waitForKeypress } from "./keypress";
@@ -7,6 +7,30 @@ import { allManipulationKeys, newManipulations, manipulations, interventionTypes
 
 const MOCK_FURHAT = false;
 const MOCK_LLM = false;
+
+function updateLastTimestamp(messages: Message[], timestamp: Timestamp) {
+  const head = messages.slice(0, messages.length - 1);
+  const tail = messages[messages.length - 1];
+  console.log("updateLastTimestamp", JSON.stringify(timestamp));
+  return [
+    ...head,
+    Object.assign(timestamp, tail)
+  ];
+}
+
+function timeString(timestamp: Timestamp, reference: Date): string {
+  const zeroPad = (num: number, count: number) => String(num).padStart(count, '0');
+  function dateString(value: Date, reference: Date): string {
+    if (value == null) return "null";
+    if (reference == null) return "nullRef";
+    const msDiff = value.getTime() - reference.getTime();
+    const ms = msDiff % 1000;
+    const seconds = Math.floor(msDiff / 1000 % 60);
+    const minutes = Math.floor(msDiff / 1000 / 60);
+    return `${zeroPad(minutes, 2)}:${zeroPad(seconds, 2)},${zeroPad(ms, 3)}`;
+  }
+  return `[${dateString(timestamp.start, reference)}..${dateString(timestamp.end, reference)}]`;
+}
 
 const timer = fromPromise(
   ({ input }: { input: { ms: number } }) =>
@@ -105,6 +129,7 @@ const dmMachine = setup({
 }).createMachine({
   id: "DM",
   context: {
+    userStartSpeakingTime: null,
     lastResult: "",
     isFirstMessage: true,
     interventions: [],
@@ -114,6 +139,10 @@ const dmMachine = setup({
     messages: [
       {
         role: "system",
+        timestamp: {
+          start: new Date(),
+          end: new Date(),
+        },
         content: `You are a virtual person participating in a study on moral reasoning. Your job is to guide the user and give information. Your responses are not full paragraphs. Be short and snappy. 
         Do not give answers longer than two short sentences. Describe the moral dilemma fully. 
         You simulate structured dialogue that should be like a script of a movie to help a participant reflect on a hypothetical moral dilemma. 
@@ -140,7 +169,11 @@ const dmMachine = setup({
       },      
       {
         role: "assistant",
-        content: "Hello. We have a moral dilemma to talk about! Can you introduce yourself a bit? After that I am ready to assist you with the dilemma and your questions about each passenger."        
+        timestamp: {
+          start: new Date(),
+          end: new Date(),
+        },
+        content: "Hello. We have a moral dilemma to talk about! Can you introduce yourself a bit? After that I am ready to assist you with the dilemma and your questions about each passenger."
       }
 
       /* 
@@ -244,7 +277,12 @@ const dmMachine = setup({
 
     // NEW: Listen for user's speech OR wait for keypress (whichever comes first)
     ListeningOrWaitingForKey: {
-      entry: () => console.log("Listening for user input OR waiting for keypress..."),
+      entry: assign(({ context }) => {
+        console.log("Listening for user input OR waiting for keypress...");
+        return {
+          userStartSpeakingTime: context.userStartSpeakingTime || new Date()
+        }
+      }),
       invoke: {
         src: "listenOrKeypress",
         onDone: {
@@ -316,9 +354,17 @@ const dmMachine = setup({
             return {
               messages: [
                 ...context.messages,
-                { role: "user" as const, content: combinedInput }
+                {
+                  role: "user" as const,
+                  content: combinedInput,
+                  timestamp: {
+                    start: context.userStartSpeakingTime!!,
+                    end: new Date(),
+                  }
+                }
               ],
               userSpeechBuffer: [], // Clear the buffer
+              userStartSpeakingTime: null,
             };
           }),
         },
@@ -394,7 +440,14 @@ const dmMachine = setup({
           return {
             messages: [
               ...context.messages,
-              { role: "assistant" as const, content: textForHistory }
+              {
+                role: "assistant" as const,
+                content: textForHistory,
+                timestamp: {
+                  start: new Date(),
+                  end: new Date(),
+                }
+              }
             ],
             pendingManipulation: manipulation.audioUri,
           };
@@ -408,7 +461,14 @@ const dmMachine = setup({
           return {
             messages: [
               ...context.messages,
-              { role: "assistant" as const, content: phrase }
+              {
+                role: "assistant" as const,
+                timestamp: {
+                  start: new Date(),
+                  end: new Date(),
+                },
+                content: phrase
+              }
             ],
             pendingManipulation: phrase,
           };
@@ -441,7 +501,7 @@ const dmMachine = setup({
           target: "ListeningOrWaitingForKey", // After speaking manipulation, go back to listening/waiting
           actions: [
             () => console.log("Manipulation phrase spoken, now listening for user response or keypress"),
-            assign({ pendingManipulation: null })
+            assign({ pendingManipulation: null, userStartSpeakingTime: null })
           ],
         },
         onError: {
@@ -465,7 +525,7 @@ const dmMachine = setup({
           target: "ListeningOrWaitingForKey",
           actions: [
             () => console.log("Manipulation audio played, now listening for user response"),
-            assign({ pendingManipulation: null })
+            assign({ pendingManipulation: null, userStartSpeakingTime: null })
           ],
         },
         onError: {
@@ -490,7 +550,11 @@ const dmMachine = setup({
             return {
               messages: [
                 ...context.messages,
-                { role: "assistant" as const, content: event.output }
+                {
+                  role: "assistant" as const,
+                  timestamp: { start: new Date(), end: new Date() },
+                  content: event.output,
+                }
               ],
             };
           }),
@@ -502,6 +566,7 @@ const dmMachine = setup({
               ...context.messages,
               { 
                 role: "assistant" as const, 
+                timestamp: { start: new Date(), end: new Date() },
                 content: "I couldn't process that. Please say it again." 
               }
             ],
@@ -516,14 +581,19 @@ const dmMachine = setup({
         src: "fhSpeak",
         input: ({ context }) => {
           const lastMessage = context.messages[context.messages.length - 1];
-          return { 
+          return {
             text: lastMessage.content,
             isFirstMessage: false
           };
         },
         onDone: {
           target: "ListeningOrWaitingForKey", // After Furhat speaks, go back to listening/waiting
-          actions: () => console.log("Finished speaking LLM response, now listening for user or keypress"),
+          actions: assign(({ context, event }) => {
+            console.log("Finished speaking LLM response, now listening for user or keypress");
+            return {
+              messages: updateLastTimestamp(context.messages, event.output),
+            };
+          }),
         },
         onError: {
           target: "ListeningOrWaitingForKey",
@@ -542,11 +612,12 @@ const dmMachine = setup({
         }),
         onDone: {
           target: "LastQuestionWaitForYN",
-          actions: assign(({ context }) => ({
+          actions: assign(({ context, event }) => ({
             messages: [
               ...context.messages,
               {
                 role: "assistant" as const,
+                timestamp: { start: event.output.start, end: event.output.end },
                 content: "Thank you for your participation."
               }
             ],
@@ -597,8 +668,9 @@ const dmMachine = setup({
     ListMessagesBeforeFinal: {
       entry: ({ context }) => {
         console.log("\n=== MESSAGE HISTORY ===");
+        const startTime = context.messages[0].timestamp.start;
         context.messages.forEach((msg, i) => {
-          console.log(`${i + 1}. [${msg.role}]: ${msg.content}`);
+          console.log(`${i + 1}. [${timeString(msg.timestamp, startTime)}] [${msg.role}]: ${msg.content}`);
         });
         console.log("======================\n");
       },

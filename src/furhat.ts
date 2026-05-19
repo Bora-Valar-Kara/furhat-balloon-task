@@ -23,9 +23,11 @@ export const fakeFurhat = {
   async setVoice(name: string) {},
   async say(text: string, isFirstMessage: boolean = false) {
     console.log("FURHAT SAYS: " + text);
+    return { start: new Date(), end: new Date() };
   },
   async sayAudio(audioUrl: string, isFirstMessage: boolean = false) {
     console.log("FURHAT SAYS AUDIO FILE: " + audioUrl);
+    return { start: new Date(), end: new Date() };
   },
   async attendUser() {},
   async listen(): Promise<string> {
@@ -49,6 +51,7 @@ export async function fhSay(text: string, isFirstMessage: boolean = false) {
   const myHeaders = new Headers();
   myHeaders.append("accept", "application/json");
   const encText = encodeURIComponent(text);
+  const start = new Date();
   try {
     const result = await fetch(`http://${FURHATURI}/furhat/say?text=${encText}&blocking=true`, {
       method: "POST",
@@ -58,26 +61,30 @@ export async function fhSay(text: string, isFirstMessage: boolean = false) {
   } catch (error) {
     console.error("Error in fhSay:", error);
   }
+  const end = new Date();
   
   // 6 second delay for first message (long introduction), 1 second for others
   const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
   await new Promise(resolve => setTimeout(resolve, delay));
+  return { start, end };
 }
 
 export async function fhSayAudio(audioUrl: string, isFirstMessage: boolean = false) {
   const myHeaders = new Headers();
   myHeaders.append("accept", "application/json");
   const encUrl = encodeURIComponent(audioUrl);
-  
+  const start = new Date();
   // Remove the 'text=' and use 'url=' instead
   await fetch(`http://${FURHATURI}/furhat/say?url=${encUrl}&blocking=true&lipsync=true`, {
     method: "POST",
     headers: myHeaders,
     body: "",
   });
+  const end = new Date();
   
   const delay = isFirstMessage ? firstMessageWaitTimeMs : 200;
   await new Promise(resolve => setTimeout(resolve, delay));
+  return { start, end };
 }
 
 export async function fhAttendUser() { // This is about GAZE.
