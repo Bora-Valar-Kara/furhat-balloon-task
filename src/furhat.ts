@@ -40,6 +40,16 @@ export async function fhVoice(name: string) { // fh functions are fetched from F
   const myHeaders = new Headers();
   myHeaders.append("accept", "application/json");
   const encName = encodeURIComponent(name);
+  await fetch(`http://${FURHATURI}/furhat/face?mask=adult&character=Alex`, {
+    method: "POST",
+    headers: myHeaders,
+    body: "",
+  });
+  await fetch(`http://${FURHATURI}/furhat/led?red=0&green=0&blue=0`, {
+    method: "POST",
+    headers: myHeaders,
+    body: "",
+  });
   return fetch(`http://${FURHATURI}/furhat/voice?name=${encName}`, {
     method: "POST",
     headers: myHeaders,

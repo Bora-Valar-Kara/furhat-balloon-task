@@ -72,7 +72,7 @@ const dmMachine = setup({
       await chatCompletion([]);
     }),
     fhSetVoice: fromPromise(async () => {
-      return furhat.setVoice("en-US-EchoMultilingualNeural");
+      return furhat.setVoice("Talha_new_new");
     }),
     fhAttend: fromPromise(async () => {
       return furhat.attendUser();
